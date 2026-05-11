@@ -293,6 +293,30 @@ button:disabled {
   padding: .75rem;
 }
 
+.data-table th.sortable-th {
+  cursor: pointer;
+}
+
+.data-table th.sortable-th > span {
+  display: inline-flex;
+  align-items: center;
+  gap: .42rem;
+}
+
+.sort-indicator {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-text);
+  font-size: .62rem;
+  font-weight: 600;
+  padding: .12rem .35rem;
+}
+
+.sortable-th:hover .sort-indicator {
+  border-color: rgba(16,185,129,.4);
+  color: var(--app-text);
+}
+
 .data-table td {
   color: var(--app-text);
   white-space: nowrap;
@@ -468,6 +492,33 @@ button:disabled {
   .ledger-toolbar {
     grid-template-columns: 1fr;
   }
+}
+
+.score-guide {
+  display: grid;
+  gap: .45rem;
+}
+
+.score-guide div {
+  display: grid;
+  grid-template-columns: 2rem 1fr;
+  align-items: center;
+  gap: .6rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--soft-bg);
+  padding: .55rem .65rem;
+}
+
+.score-guide strong {
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  color: var(--app-text);
+}
+
+.score-guide span {
+  color: var(--muted-text);
+  font-size: .78rem;
+  line-height: 1.35;
 }
 
 .template-grid {
