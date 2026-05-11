@@ -128,6 +128,7 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   NVDL: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('GPUs / accelerators', 5, 'indirect', [{ bucket: 'Semiconductors', weight: 40 }]) },
   NVDY: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('GPUs / accelerators', 4, 'indirect', [{ bucket: 'Semiconductors', weight: 35 }]) },
   PLTY: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('AI platforms / AI software', 3, 'indirect') },
+  'BRK/B': { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
   QQQ: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1.5, 'indirect') },
   SPY: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
   DIA: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
@@ -138,6 +139,7 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   QQQI: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1.5, 'indirect') },
   QYLD: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1.5, 'indirect') },
   XYLD: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
+  DJIA: { assetClass: 'Broad US equity', securityType: 'ETF / closed-end fund', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
   NOBL: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
   VYM: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
   VHYAX: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
@@ -148,6 +150,9 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   XLE: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
   GDX: { assetClass: 'Alternatives/other', securityType: 'ETF / closed-end fund', sector: 'Materials', ai: ai('Broad passive index exposure', 0, 'none') },
   GDXJ: { assetClass: 'Alternatives/other', securityType: 'ETF / closed-end fund', sector: 'Materials', ai: ai('Broad passive index exposure', 0, 'none') },
+  PPA: { assetClass: 'Alternatives/other', securityType: 'ETF / closed-end fund', sector: 'Industrials', ai: ai('Robotics / automation', 1, 'indirect', [], 'Defense/aerospace ETF with indirect automation and autonomous systems exposure.') },
+  TSLY: { assetClass: 'Broad US equity', securityType: 'ETF / closed-end fund', sector: 'Consumer Discretionary', ai: ai('Robotics / automation', 1, 'indirect', [], 'Option-income ETF tied to TSLA exposure; not direct AI infrastructure ownership.') },
+  DXYZ: { assetClass: 'Alternatives/other', securityType: 'ETF / closed-end fund', sector: 'Private technology', ai: ai('Public indirect AI lab exposure', 1.5, 'indirect', [], 'Closed-end public vehicle with private technology exposure; classify as indirect only.') },
   ETHA: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
   IBIT: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
   IREN: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Digital assets', ai: ai('Data centers / colocation', 1.5, 'indirect') },
@@ -155,6 +160,9 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   BMNR: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
   AZO: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
   COST: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  KR: { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  SFD: { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  UNFI: { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
   WMT: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
   KO: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
   HSY: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
@@ -165,6 +173,9 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   JPM: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
   AB: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
   BEN: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  COIN: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  EWBC: { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  FRCB: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
   IVZ: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
   HOOD: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
   SOFI: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
@@ -188,6 +199,8 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   F: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Robotics / automation', 0.5, 'indirect') },
   GM: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Robotics / automation', 0.5, 'indirect') },
   WYNN: { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
+  RL: { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
+  WSM: { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
   CVNA: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
   EBAY: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Enterprise software', 0.5, 'indirect') },
   MELI: { assetClass: 'International equity', sector: 'Consumer Discretionary', ai: ai('Enterprise software', 0.5, 'indirect') },
@@ -196,14 +209,27 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   CLOV: { assetClass: 'Broad US equity', sector: 'Health Care', ai: ai('Enterprise software', 0.5, 'indirect') },
   RKLB: { assetClass: 'Broad US equity', sector: 'Industrials', ai: ai('Robotics / automation', 1, 'indirect') },
   QS: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Grid / electrification', 1, 'indirect') },
+  ONDS: { assetClass: 'AI buildout sleeve', securityType: 'Individual equity', sector: 'Information Technology', ai: ai('Robotics / automation', 2.5, 'direct', [{ bucket: 'Networking', weight: 25 }], 'Autonomous systems and private industrial wireless exposure; speculative/small-cap profile.') },
+  OPEN: { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Real Estate', ai: ai('Enterprise software', 0.5, 'indirect') },
+  OPENL: { assetClass: 'Alternatives/other', securityType: 'Option / warrant / right', sector: 'Real Estate', ai: ai('Enterprise software', 0.5, 'indirect') },
+  OPENW: { assetClass: 'Alternatives/other', securityType: 'Option / warrant / right', sector: 'Real Estate', ai: ai('Enterprise software', 0.5, 'indirect') },
+  OPENZ: { assetClass: 'Alternatives/other', securityType: 'Option / warrant / right', sector: 'Real Estate', ai: ai('Enterprise software', 0.5, 'indirect') },
+  CGCTW: { assetClass: 'Alternatives/other', securityType: 'Option / warrant / right', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
   VTI: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
   VOO: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
   VXUS: { assetClass: 'International equity', sector: 'International Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
+  DXJ: { assetClass: 'International equity', securityType: 'ETF / closed-end fund', sector: 'International Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
+  EWY: { assetClass: 'International equity', securityType: 'ETF / closed-end fund', sector: 'International Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
+  SCHE: { assetClass: 'International equity', securityType: 'ETF / closed-end fund', sector: 'International Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
+  SMFG: { assetClass: 'International equity', securityType: 'Individual equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  TX: { assetClass: 'International equity', securityType: 'Individual equity', sector: 'Materials', ai: ai('Materials / specialty chemicals', 0.5, 'indirect') },
   BND: { assetClass: 'Bonds/fixed income', sector: 'Fixed Income', ai: ai('Broad passive index exposure', 0, 'none') },
   SGOV: { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
   SPAXX: { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
   SNVXX: { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
+  'SEAL/PRA': { assetClass: 'Alternatives/other', securityType: 'Other', sector: 'Energy', ai: ai('Broad passive index exposure', 0, 'none') },
   '89236TJK2': { assetClass: 'Bonds/fixed income', securityType: 'Bond / fixed income', sector: 'Fixed Income', ai: ai('Broad passive index exposure', 0, 'none') },
+  'CASH & CASH INVESTMENTS': { assetClass: 'Cash', securityType: 'Cash / money market', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
   'Cash & Cash Investments': { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
 }
 
@@ -535,12 +561,13 @@ function Overview({ analytics, template, templates, customTemplates, setCustomTe
       <MetricCard icon={<StackSimple size={20} />} label="Holdings" value={String(analytics.holdings.length)} />
       <MetricCard icon={<Sparkle size={20} />} label="AI buildout exposure" value={`${percentFmt.format(analytics.aiExposure)}%`} />
       <MetricCard icon={<Funnel size={20} />} label={`Largest holding · ${analytics.topHoldings[0]?.ticker ?? 'N/A'}`} value={`${percentFmt.format(analytics.largestWeight)}%`} />
-      <MetricCard icon={<Pulse size={20} />} label="Risk-budget estimate" value={analytics.riskScore.toFixed(2)} />
+      <MetricCard icon={<Pulse size={20} />} label="Risk-budget estimate" value={analytics.riskScore.toFixed(2)} hint="Rule of thumb: 1.00 is broad-stock-like. Higher means more high-beta AI or single-name tilt; lower means more cash/bonds." />
     </div>
     <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-      <Panel title="Current read" action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
+      <Panel title={`Current snapshot read vs ${template.name}`} action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
+        <p className="mb-3 text-sm leading-6 text-muted">This is the portfolio you selected in the snapshot/account controls. The template is only the comparison yardstick, not a replacement portfolio.</p>
         <p className="text-balance text-lg leading-8 text-app">{executiveSummary(analytics, template)}</p>
-        <p className="mt-3 text-sm leading-6 text-muted">Risk-budget estimate is a rough weighted exposure score: cash counts near 0, bonds count lower, broad equity counts around 1, and higher-beta AI buckets count more. It is useful for comparing before/after simulations, not for predicting actual volatility.</p>
+        <OverviewGuide />
         <div className="mt-5 rounded-xl border border-app bg-soft p-3">
           <label className="field"><span>Scenario sensitivity</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <p className="mt-3 text-sm leading-6 text-muted">{stressExplanation(stress)}</p>
@@ -582,6 +609,18 @@ function Overview({ analytics, template, templates, customTemplates, setCustomTe
 
 function StressShockList({ scenario }: { scenario: StressScenario }) {
   return <div className="stress-list">{Object.entries(scenario.shocks).map(([name, value]) => <span key={name}>{name}: <strong>{value && value > 0 ? '+' : ''}{value}%</strong></span>)}</div>
+}
+
+function OverviewGuide() {
+  const items = [
+    ['Update data', 'Import & Snapshots', 'Upload files, set dates, rename snapshots, compare what changed.'],
+    ['Audit holdings', 'Concentration & Holdings', 'Sort, filter, exclude noise, and edit sandbox fields.'],
+    ['Check AI thesis', 'AI Buildout', 'See whether the AI sleeve is balanced or too crowded.'],
+    ['Test a path', 'Recomp Sandbox', 'Convert a chosen template into simulated action math.'],
+  ]
+  return <div className="overview-guide">
+    {items.map(([goal, title, body]) => <div key={title}><em>{goal}</em><strong>{title}</strong><span>{body}</span></div>)}
+  </div>
 }
 
 function TemplateEditor({ template, isCustom, customTemplates, setCustomTemplates, setTemplate, duplicateTemplate }: { template: StrategyTemplate; isCustom: boolean; customTemplates: StrategyTemplate[]; setCustomTemplates: React.Dispatch<React.SetStateAction<StrategyTemplate[]>>; setTemplate: (id: string) => void; duplicateTemplate: () => void }) {
