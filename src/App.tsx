@@ -76,6 +76,7 @@ import './index.css'
 
 const chartAxis = 'var(--chart-axis)'
 const chartGrid = 'var(--chart-grid)'
+const chartTick = { fill: chartAxis, fontSize: 11, fontFamily: 'Geist, "Geist Sans", Aptos, "Segoe UI", system-ui, sans-serif' }
 const chartTooltip = {
   background: 'var(--tooltip-bg)',
   border: '1px solid var(--border)',
@@ -561,8 +562,9 @@ function Overview({ analytics, template, templates, customTemplates, setCustomTe
       <MetricCard icon={<StackSimple size={20} />} label="Holdings" value={String(analytics.holdings.length)} />
       <MetricCard icon={<Sparkle size={20} />} label="AI buildout exposure" value={`${percentFmt.format(analytics.aiExposure)}%`} />
       <MetricCard icon={<Funnel size={20} />} label={`Largest holding · ${analytics.topHoldings[0]?.ticker ?? 'N/A'}`} value={`${percentFmt.format(analytics.largestWeight)}%`} />
-      <MetricCard icon={<Pulse size={20} />} label="Risk-budget estimate" value={analytics.riskScore.toFixed(2)} hint="Rule of thumb: 1.00 is broad-stock-like. Higher means more high-beta AI or single-name tilt; lower means more cash/bonds." />
+      <MetricCard icon={<Pulse size={20} />} label="Risk-budget estimate" value={analytics.riskScore.toFixed(2)} />
     </div>
+    <p className="metric-row-note"><strong>Risk-budget estimate:</strong> 1.00 is broad-stock-like. Higher means more high-beta AI or single-name tilt; lower means more cash/bonds.</p>
     <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
       <Panel title={`Current snapshot read vs ${template.name}`} action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
         <p className="mb-3 text-sm leading-6 text-muted">This is the portfolio you selected in the snapshot/account controls. The template is only the comparison yardstick, not a replacement portfolio.</p>
@@ -882,7 +884,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs uppercase tracking-[0.16em] text-zinc-500">{label}</p><p className="mt-1 font-mono text-lg text-zinc-100">{value}</p></div>
 }
 function MetricCard({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: string; hint?: string }) {
-  return <div className="metric-card"><div className="text-emerald-300">{icon}</div><div><p>{label}</p><strong>{value}</strong>{hint && <span className="metric-hint">{hint}</span>}</div></div>
+  return <div className="metric-card"><div className="metric-icon">{icon}</div><div><p>{label}</p><strong>{value}</strong>{hint && <span className="metric-hint">{hint}</span>}</div></div>
 }
 function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return <section className="panel"><div className="panel-header"><h2>{title}</h2>{action}</div>{children}</section>
@@ -926,7 +928,7 @@ function CutoffCard({ label, cutoff }: { label: string; cutoff?: { holding: Hold
   </div>
 }
 function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
-  return <Panel title={title}><div className="h-80">{children}</div></Panel>
+  return <Panel title={title}><div className="chart-frame">{children}</div></Panel>
 }
 function ChartLegend({ items }: { items: { label: string; color: string }[] }) {
   return <div className="chart-legend">{items.map((item) => <span key={item.label}><i style={{ backgroundColor: item.color }} />{item.label}</span>)}</div>
@@ -943,28 +945,31 @@ function AllocationDonut({ data, target = false }: { data: { name: string; value
 }
 function BarList({ data }: { data: BarDatum[] }) {
   const hasLabels = data.some((item) => item.label)
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 8, right: hasLabels ? 112 : 20 }}><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis type="category" dataKey="name" width={132} stroke={chartAxis} tick={{ fontSize: 11 }} tickFormatter={shortChartLabel} interval={0} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} labelFormatter={(label) => String(label)} contentStyle={chartTooltip} /><Bar dataKey="value" radius={[0, 6, 6, 0]}>{data.map((item, i) => <Cell key={item.name} fill={item.color ?? chartColor(item.name, i)} />)}{hasLabels && <LabelList dataKey="label" position="right" className="bar-value-label" />}</Bar></BarChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ top: 4, right: hasLabels ? 120 : 24, bottom: 24, left: 8 }}><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} tick={chartTick} tickLine={false} axisLine={{ stroke: chartAxis }} /><YAxis type="category" dataKey="name" width={132} stroke={chartAxis} tick={chartTick} tickFormatter={shortChartLabel} interval={0} tickLine={false} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} labelFormatter={(label) => String(label)} contentStyle={chartTooltip} /><Bar dataKey="value" radius={[0, 6, 6, 0]}>{data.map((item, i) => <Cell key={item.name} fill={item.color ?? chartColor(item.name, i)} />)}{hasLabels && <LabelList dataKey="label" position="right" className="bar-value-label" />}</Bar></BarChart></ResponsiveContainer>
 }
 function HoldingsTreemap({ holdings }: { holdings: Holding[] }) {
-  const data = holdings.map((holding) => ({ name: holding.ticker, size: holding.marketValue, color: holdingColor(holding) }))
+  const total = holdings.reduce((sum, holding) => sum + holding.marketValue, 0)
+  const data = holdings.map((holding) => ({ name: holding.ticker, size: holding.marketValue, weight: weight(holding.marketValue, total), color: holdingColor(holding) }))
   return <ResponsiveContainer width="100%" height="100%"><Treemap data={data} dataKey="size" aspectRatio={4 / 3} stroke="var(--app-bg)" content={<TreemapCell />} /></ResponsiveContainer>
 }
-function TreemapCell(props: { x?: number; y?: number; width?: number; height?: number; name?: string; color?: string }) {
-  const { x = 0, y = 0, width = 0, height = 0, name = '', color = semanticColors.other } = props
+function TreemapCell(props: { x?: number; y?: number; width?: number; height?: number; name?: string; color?: string; size?: number; weight?: number }) {
+  const { x = 0, y = 0, width = 0, height = 0, name = '', color = semanticColors.other, size = 0, weight: pct = 0 } = props
   if (width <= 0 || height <= 0) return null
-  return <g>
-    <rect x={x} y={y} width={width} height={height} fill={color} rx={5} ry={5} opacity={0.95} />
-    {width > 46 && height > 24 && <text x={x + 8} y={y + 18} fill="#ffffff" fontSize={12} fontWeight={650}>{name}</text>}
+  const label = `${name} · ${percentFmt.format(pct)}% · ${compactDollar(size)}`
+  return <g className="treemap-cell">
+    <title>{label}</title>
+    <rect x={x + 1} y={y + 1} width={Math.max(0, width - 2)} height={Math.max(0, height - 2)} fill={color} rx={4} ry={4} />
+    {width > 54 && height > 26 && <text x={x + 8} y={y + 18} fill="#ffffff" fontSize={11} fontWeight={500}>{name}</text>}
   </g>
 }
 function TargetBars({ analytics, template }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate }) {
   const data = assetClasses.map((asset) => ({ name: asset, current: weight(analytics.assetTotals[asset] ?? 0, analytics.total), target: template.targets[asset] }))
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis dataKey="name" type="category" width={150} stroke={chartAxis} tick={{ fontSize: 12 }} interval={0} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /><Bar dataKey="current" fill="var(--accent)" radius={[0, 6, 6, 0]} /><Bar dataKey="target" fill="var(--compare)" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ top: 4, right: 24, bottom: 24, left: 8 }}><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} tick={chartTick} tickLine={false} /><YAxis dataKey="name" type="category" width={150} stroke={chartAxis} tick={{ ...chartTick, fontSize: 12 }} interval={0} tickLine={false} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /><Bar dataKey="current" fill="var(--accent)" radius={[0, 6, 6, 0]} /><Bar dataKey="target" fill="var(--compare)" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
 }
 function BeforeAfter({ before, after }: { before: { name: string; value: number }[]; after: { name: string; value: number }[] }) {
   const names = Array.from(new Set([...before.map((i) => i.name), ...after.map((i) => i.name)]))
   const data = names.map((name) => ({ name, current: before.find((i) => i.name === name)?.value ?? 0, simulated: after.find((i) => i.name === name)?.value ?? 0 }))
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><XAxis type="number" stroke={chartAxis} /><YAxis dataKey="name" type="category" width={150} stroke={chartAxis} tick={{ fontSize: 12 }} interval={0} /><Tooltip contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /><Bar dataKey="current" fill="var(--compare)" /><Bar dataKey="simulated" fill="var(--accent)" /></BarChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ top: 4, right: 24, bottom: 24, left: 8 }}><XAxis type="number" stroke={chartAxis} tick={chartTick} tickLine={false} /><YAxis dataKey="name" type="category" width={150} stroke={chartAxis} tick={{ ...chartTick, fontSize: 12 }} interval={0} tickLine={false} /><Tooltip contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /><Bar dataKey="current" fill="var(--compare)" /><Bar dataKey="simulated" fill="var(--accent)" /></BarChart></ResponsiveContainer>
 }
 function PreviewRows({ rows }: { rows: Record<string, unknown>[] }) {
   const keys = Object.keys(rows[0] ?? {}).slice(0, 6)

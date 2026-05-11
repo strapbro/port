@@ -10,7 +10,7 @@
   --soft-bg: rgba(9,9,11,.34);
   --border: rgba(255,255,255,.09);
   --input-bg: rgba(9,9,11,.72);
-  --accent: #10b981;
+  --accent: #047857;
   --compare: #71717a;
   --chart-axis: #a1a1aa;
   --chart-grid: rgba(255,255,255,.09);
@@ -98,6 +98,7 @@ button:disabled {
 }
 
 .panel {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--panel-bg);
@@ -117,7 +118,7 @@ button:disabled {
   margin: 0;
   color: var(--app-text);
   font-size: .95rem;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -.01em;
 }
 
@@ -151,7 +152,11 @@ button:disabled {
   font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
   color: #f4f4f5;
   font-size: 1.35rem;
-  font-weight: 650;
+  font-weight: 600;
+}
+
+.metric-icon {
+  color: var(--accent);
 }
 
 .metric-hint {
@@ -161,6 +166,18 @@ button:disabled {
   font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
   font-size: .72rem;
   line-height: 1.35;
+}
+
+.metric-row-note {
+  margin: -.35rem 0 .15rem;
+  color: var(--muted-text);
+  font-size: .76rem;
+  line-height: 1.45;
+}
+
+.metric-row-note strong {
+  color: var(--app-text);
+  font-weight: 600;
 }
 
 :root[data-theme="light"] .metric-card strong {
@@ -187,7 +204,7 @@ button:disabled {
 }
 
 .primary:hover {
-  background: #059669;
+  background: #065f46;
 }
 
 :root[data-theme="light"] .primary {
@@ -322,6 +339,44 @@ button:disabled {
   fill: var(--muted-text);
   font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
   font-size: .68rem;
+}
+
+.chart-frame {
+  min-width: 0;
+  height: 20rem;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.chart-frame .recharts-wrapper,
+.chart-frame .recharts-surface,
+.chart-frame .recharts-cartesian-axis-tick-value,
+.chart-frame .recharts-legend-item-text {
+  font-family: Geist, "Geist Sans", Aptos, "Segoe UI", system-ui, sans-serif !important;
+}
+
+.treemap-cell rect {
+  opacity: .95;
+  transition: opacity .16s ease, filter .16s ease, stroke .16s ease;
+}
+
+.treemap-cell text {
+  font-family: Geist, "Geist Sans", Aptos, "Segoe UI", system-ui, sans-serif;
+  fill: rgba(255,255,255,.94);
+  letter-spacing: 0;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,.26);
+}
+
+.treemap-cell:hover rect {
+  opacity: .82;
+  filter: saturate(1.06);
+  stroke: rgba(255,255,255,.82);
+  stroke-width: 1.5px;
+}
+
+:root[data-theme="light"] .treemap-cell:hover rect {
+  stroke: rgba(24,24,27,.72);
 }
 
 .cutoff-grid {
