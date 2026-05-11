@@ -637,6 +637,14 @@ button:disabled {
   font-size: .78rem;
 }
 
+.rename-inline {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: .45rem;
+  align-items: center;
+  max-width: 680px;
+}
+
 .stress-list {
   display: flex;
   flex-wrap: wrap;

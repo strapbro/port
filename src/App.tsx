@@ -760,6 +760,19 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
   const previous = props.snapshots.at(-2)
   const comparison = latest && previous ? compareSnapshots(previous, latest) : []
   const stagedAccounts = summarizeStagedAccounts(props.rows)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  function beginRename(snapshot: PortfolioSnapshot) {
+    setRenamingId(snapshot.id)
+    setRenameDraft(snapshot.name)
+  }
+  function saveRename() {
+    const name = renameDraft.trim()
+    if (!renamingId || !name) return
+    props.setSnapshots((items) => items.map((item) => item.id === renamingId ? { ...item, name } : item))
+    setRenamingId(null)
+    setRenameDraft('')
+  }
   return <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
     <Panel title="Upload holdings" action={<button className="primary" onClick={props.generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
       <label className="upload">
@@ -788,9 +801,17 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
     <Panel title="Snapshots and changes">
       <div className="space-y-3">
         {props.snapshots.map((snapshot) => <div key={snapshot.id} className="row">
-          <div><p className="font-medium text-zinc-100">{snapshot.name}</p><p className="text-xs text-zinc-500">{new Date(snapshot.date).toLocaleString()} · {snapshot.holdings.length} holdings · {snapshot.source}</p></div>
+          <div className="min-w-0 flex-1">
+            {renamingId === snapshot.id ? <div className="rename-inline">
+              <input className="control" value={renameDraft} autoFocus onChange={(event) => setRenameDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveRename(); if (event.key === 'Escape') setRenamingId(null) }} />
+              <button className="primary" onClick={saveRename}>Save</button>
+              <button className="ghost" onClick={() => setRenamingId(null)}>Cancel</button>
+            </div> : <p className="font-medium text-zinc-100">{snapshot.name}</p>}
+            <p className="text-xs text-zinc-500">{new Date(snapshot.date).toLocaleString()} · {snapshot.holdings.length} holdings · {snapshot.source}</p>
+          </div>
           <div className="flex gap-2">
             <button className="ghost" onClick={() => props.setSelectedSnapshotId(snapshot.id)}>View</button>
+            <button className="ghost" onClick={() => beginRename(snapshot)}><PencilSimple size={16} /> Rename</button>
             {props.snapshots.length > 1 && <button className="ghost" onClick={() => props.setSnapshots((items) => items.filter((item) => item.id !== snapshot.id))}><Trash size={16} /> Delete</button>}
           </div>
         </div>)}
