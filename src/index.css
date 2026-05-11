@@ -317,6 +317,12 @@ button:disabled {
   color: var(--app-text);
 }
 
+.bar-value-label {
+  fill: var(--muted-text);
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: .68rem;
+}
+
 .data-table td {
   color: var(--app-text);
   white-space: nowrap;

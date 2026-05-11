@@ -24,6 +24,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Legend,
   Pie,
   PieChart,
@@ -188,7 +189,16 @@ const aiBuckets: AIBucket[] = [
   'Robotics / automation',
   'Broad passive index exposure',
 ]
-const colors = ['#047857', '#6b7280', '#2563eb', '#b45309', '#0f766e', '#7c3aed', '#be123c', '#475569']
+const colors = ['#047857', '#2563eb', '#b45309', '#6b7280', '#0f766e', '#be123c', '#475569']
+const semanticColors = {
+  ai: '#047857',
+  index: '#2563eb',
+  cash: '#b45309',
+  bonds: '#6b7280',
+  international: '#0f766e',
+  alternatives: '#be123c',
+  other: '#475569',
+}
 const chartAxis = 'var(--chart-axis)'
 const chartGrid = 'var(--chart-grid)'
 const chartTooltip = {
@@ -687,7 +697,7 @@ function Overview({ analytics, template, templates, customTemplates, setCustomTe
       <ChartPanel title="Sector"><Donut data={analytics.sectorData.slice(0, 8)} /></ChartPanel>
       <ChartPanel title="Current vs target allocation"><TargetBars analytics={analytics} template={template} /></ChartPanel>
       <ChartPanel title="AI buildout exposure by bucket"><BarList data={analytics.aiBucketData.slice(0, 10)} /></ChartPanel>
-      <ChartPanel title="Top 10 holdings"><BarList data={analytics.topHoldings.slice(0, 10).map((h) => ({ name: h.ticker, value: weight(h.marketValue, analytics.total) }))} /></ChartPanel>
+      <ChartPanel title="Top 10 holdings"><BarList data={holdingBarData(analytics.topHoldings.slice(0, 10), analytics.total)} /></ChartPanel>
     </div>
     <Panel title="Strategy templates">
       <div className="template-grid">
@@ -829,7 +839,7 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
 function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId, hideHolding, hiddenHoldings, unhideHolding, ledgerMode, setLedgerMode, editedCount, discardEdits, saveEditedSnapshot }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void; hideHolding: (holding: Holding) => void; hiddenHoldings: Holding[]; unhideHolding: (id: string) => void; ledgerMode: LedgerMode; setLedgerMode: (mode: LedgerMode) => void; editedCount: number; discardEdits: () => void; saveEditedSnapshot: () => void }) {
   return <section className="grid gap-5">
     <div className="grid gap-5 xl:grid-cols-2">
-      <ChartPanel title="Top holdings ranked"><BarList data={analytics.topHoldings.slice(0, 15).map((h) => ({ name: h.ticker, value: weight(h.marketValue, analytics.total) }))} /></ChartPanel>
+      <ChartPanel title="Top holdings ranked"><BarList data={holdingBarData(analytics.topHoldings.slice(0, 15), analytics.total)} /></ChartPanel>
       <ChartPanel title="Holdings treemap"><Treemap width={500} height={300} data={analytics.topHoldings.map((h) => ({ name: h.ticker, size: h.marketValue }))} dataKey="size" aspectRatio={4 / 3} stroke="var(--app-bg)" fill="var(--accent)" /></ChartPanel>
     </div>
     <Panel title="Holdings table" action={<button className="ghost" onClick={() => exportCsv('current-view-holdings.csv', analytics.holdings)}><DownloadSimple size={16} /> Export current view</button>}>
@@ -976,11 +986,13 @@ function ChartPanel({ title, children }: { title: string; children: React.ReactN
 function WarningPanel({ warnings }: { warnings: AppWarning[] }) {
   return <Panel title="Warnings"><div className="space-y-3">{warnings.map((warning) => <div key={warning.id} className={`warning warning-${warning.severity}`}><ShieldWarning size={18} /><div><p>{warning.title}</p><span>{warning.detail}</span></div></div>)}</div></Panel>
 }
+type BarDatum = { name: string; value: number; label?: string; color?: string }
 function Donut({ data }: { data: { name: string; value: number }[] }) {
-  return <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96} paddingAngle={2}>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} stroke="var(--app-bg)" />)}</Pie><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /></PieChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96} paddingAngle={2}>{data.map((item, i) => <Cell key={i} fill={chartColor(item.name, i)} stroke="var(--app-bg)" />)}</Pie><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /></PieChart></ResponsiveContainer>
 }
-function BarList({ data }: { data: { name: string; value: number }[] }) {
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 8, right: 20 }}><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis type="category" dataKey="name" width={132} stroke={chartAxis} tick={{ fontSize: 11 }} tickFormatter={shortChartLabel} interval={0} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} labelFormatter={(label) => String(label)} contentStyle={chartTooltip} /><Bar dataKey="value" fill="var(--accent)" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
+function BarList({ data }: { data: BarDatum[] }) {
+  const hasLabels = data.some((item) => item.label)
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 8, right: hasLabels ? 112 : 20 }}><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis type="category" dataKey="name" width={132} stroke={chartAxis} tick={{ fontSize: 11 }} tickFormatter={shortChartLabel} interval={0} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} labelFormatter={(label) => String(label)} contentStyle={chartTooltip} /><Bar dataKey="value" radius={[0, 6, 6, 0]}>{data.map((item, i) => <Cell key={item.name} fill={item.color ?? chartColor(item.name, i)} />)}{hasLabels && <LabelList dataKey="label" position="right" className="bar-value-label" />}</Bar></BarChart></ResponsiveContainer>
 }
 function TargetBars({ analytics, template }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate }) {
   const data = assetClasses.map((asset) => ({ name: asset, current: weight(analytics.assetTotals[asset] ?? 0, analytics.total), target: template.targets[asset] }))
@@ -1139,6 +1151,41 @@ function compactChartData(data: { name: string; value: number }[], limit: number
   const head = data.slice(0, limit - 1)
   const other = data.slice(limit - 1).reduce((sum, item) => sum + item.value, 0)
   return [...head, { name: 'Other AI buckets', value: other }]
+}
+function holdingBarData(holdings: Holding[], total: number): BarDatum[] {
+  return holdings.map((holding) => {
+    const pct = weight(holding.marketValue, total)
+    return {
+      name: holding.ticker,
+      value: pct,
+      label: `${percentFmt.format(pct)}% · ${compactDollar(holding.marketValue)}`,
+      color: holdingColor(holding),
+    }
+  })
+}
+function compactDollar(value: number) {
+  if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
+  if (Math.abs(value) >= 1_000) return `$${Math.round(value / 1_000)}K`
+  return dollarFmt.format(value)
+}
+function holdingColor(holding: Holding) {
+  if (holding.assetClass === 'Cash') return semanticColors.cash
+  if (holding.assetClass === 'Broad US equity' || holding.ai.buckets.some((bucket) => bucket.bucket === 'Broad passive index exposure')) return semanticColors.index
+  if (holding.assetClass === 'Bonds/fixed income') return semanticColors.bonds
+  if (holding.assetClass === 'International equity') return semanticColors.international
+  if (holding.assetClass === 'AI buildout sleeve') return semanticColors.ai
+  if (holding.assetClass === 'Alternatives/other') return semanticColors.alternatives
+  return semanticColors.other
+}
+function chartColor(name: string, index: number) {
+  const lower = name.toLowerCase()
+  if (lower.includes('cash') || lower.includes('money market')) return semanticColors.cash
+  if (lower.includes('broad us') || lower.includes('broad passive') || lower.includes('index') || lower.includes('s&p') || lower.includes('nasdaq')) return semanticColors.index
+  if (lower.includes('bond') || lower.includes('fixed income')) return semanticColors.bonds
+  if (lower.includes('international') || lower.includes('emerging')) return semanticColors.international
+  if (lower.includes('ai') || lower.includes('semiconductor') || lower.includes('gpu') || lower.includes('data center') || lower.includes('grid') || lower.includes('power') || lower.includes('cooling') || lower.includes('networking') || lower.includes('photonics')) return semanticColors.ai
+  if (lower.includes('alternative') || lower.includes('energy') || lower.includes('digital')) return semanticColors.alternatives
+  return colors[index % colors.length]
 }
 function aggregateHoldingsForView(holdings: Holding[]): Holding[] {
   const groups = new Map<string, Holding[]>()
