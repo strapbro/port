@@ -197,6 +197,7 @@ const semanticColors = {
   bonds: '#6b7280',
   international: '#0f766e',
   alternatives: '#be123c',
+  equity: '#64748b',
   other: '#475569',
 }
 const assetClassColors: Record<AssetClass, string> = {
@@ -1231,6 +1232,7 @@ function holdingColor(holding: Holding) {
   if (isBroadIndexHolding(holding)) return semanticColors.index
   if (holding.ai.score > 0) return semanticColors.ai
   if (holding.assetClass === 'International equity') return semanticColors.international
+  if (holding.assetClass === 'Broad US equity') return semanticColors.equity
   if (holding.assetClass === 'Alternatives/other') return semanticColors.alternatives
   return semanticColors.other
 }
@@ -1241,6 +1243,7 @@ function isBroadIndexHolding(holding: Holding) {
 function chartColor(name: string, index: number) {
   const lower = name.toLowerCase()
   if (assetClasses.includes(name as AssetClass)) return assetClassColors[name as AssetClass]
+  if (aiBuckets.includes(name as AIBucket)) return name === 'Broad passive index exposure' ? semanticColors.index : semanticColors.ai
   if (lower.includes('cash') || lower.includes('money market')) return semanticColors.cash
   if (lower.includes('broad us') || lower.includes('broad passive') || lower.includes('index') || lower.includes('s&p') || lower.includes('nasdaq')) return semanticColors.index
   if (lower.includes('bond') || lower.includes('fixed income')) return semanticColors.bonds
