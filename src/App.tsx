@@ -309,6 +309,7 @@ function App() {
   const [assetFilter, setAssetFilter] = useState('All')
   const [sectorFilter, setSectorFilter] = useState('All')
   const [aiBucketFilter, setAiBucketFilter] = useState('All')
+  const [sizeFilter, setSizeFilter] = useState('All sizes')
   const [minDollar, setMinDollar] = useState(1500)
   const [minWeight, setMinWeight] = useState(0.25)
   const [importRows, setImportRows] = useState<Record<string, unknown>[]>([])
@@ -339,7 +340,8 @@ function App() {
   const simulatedAnalytics = useMemo(() => analyze(simulated, template, stress, minDollar, minWeight), [simulated, template, stress, minDollar, minWeight])
   const selectedHolding = scopedHoldings.find((item) => item.id === selectedHoldingId) ?? currentEffectiveHoldings.find((item) => item.id === selectedHoldingId)
   const cumulativeWeightByHoldingId = useMemo(() => cumulativeWeights(analytics.topHoldings, analytics.total), [analytics.topHoldings, analytics.total])
-  const tableHoldings = useMemo(() => filterHoldingsForTable(tableScopedHoldings, assetFilter, sectorFilter, aiBucketFilter), [aiBucketFilter, assetFilter, sectorFilter, tableScopedHoldings])
+  const tableTotal = useMemo(() => tableScopedHoldings.reduce((sum, holding) => sum + holding.marketValue, 0), [tableScopedHoldings])
+  const tableHoldings = useMemo(() => filterHoldingsForTable(tableScopedHoldings, assetFilter, sectorFilter, aiBucketFilter, sizeFilter, minDollar, minWeight, tableTotal), [aiBucketFilter, assetFilter, minDollar, minWeight, sectorFilter, sizeFilter, tableScopedHoldings, tableTotal])
   const tableFilterOptions = useMemo(() => tableFilters(tableScopedHoldings), [tableScopedHoldings])
 
   useEffect(() => {
@@ -404,8 +406,8 @@ function App() {
     { id: 'aiScore', header: 'AI score', accessorFn: (row) => row.ai.score, cell: ({ row, getValue }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.ai.score} min={0} max={5} step={0.5} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, score: value, source: 'manual' } })} /> : Number(getValue()).toFixed(1) },
     { id: 'directness', header: 'Directness', accessorFn: (row) => row.ai.directness, cell: ({ row, getValue }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.ai.directness} options={['direct', 'indirect', 'none']} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, directness: value as Directness, source: 'manual' } })} /> : String(getValue()) },
     { accessorKey: 'notes', header: 'Notes', cell: ({ row }) => ledgerMode === 'sandbox' ? <TextCell value={row.original.notes ?? ''} onChange={(value) => commitHoldingEdit({ ...row.original, notes: value })} /> : row.original.notes || '-' },
-    { id: 'warning', header: 'Warning', accessorFn: (row) => warningStatus(row, analytics.total, minDollar, template.maxSingle), cell: ({ getValue }) => String(getValue()) },
-  ], [analytics.total, commitHoldingEdit, cumulativeWeightByHoldingId, hiddenHoldingIds, holdingEditOverlay, ledgerMode, minDollar, template.maxSingle, toggleHoldingIncluded])
+    { id: 'warning', header: 'Warning', accessorFn: (row) => warningStatus(row, analytics.total, minDollar, minWeight, template.maxSingle), cell: ({ getValue }) => String(getValue()) },
+  ], [analytics.total, commitHoldingEdit, cumulativeWeightByHoldingId, hiddenHoldingIds, holdingEditOverlay, ledgerMode, minDollar, minWeight, template.maxSingle, toggleHoldingIncluded])
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({ data: tableHoldings, columns, state: { globalFilter: search, grouping, sorting }, onGlobalFilterChange: setSearch, onGroupingChange: setGrouping, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(), getGroupedRowModel: getGroupedRowModel(), getSortedRowModel: getSortedRowModel() })
 
@@ -538,7 +540,7 @@ function App() {
 
         {activeTab === 'Overview' && <Overview analytics={analytics} template={template} templates={allTemplates} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} stress={stress} setTemplate={setSelectedTemplateId} setStress={setSelectedStressId} generateCandidates={generateCandidates} />}
         {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} setRows={setImportRows} message={importMessage} snapshotDate={importSnapshotDate} setSnapshotDate={setImportSnapshotDate} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
-        {activeTab === 'Concentration & Holdings' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} excludedHoldingIds={hiddenHoldingIds} excludedHoldings={hiddenHoldings} includeHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} includeAll={() => setHiddenHoldingIds([])} ledgerMode={ledgerMode} setLedgerMode={setLedgerMode} editedCount={editedCount} discardEdits={discardHoldingEdits} saveEditedSnapshot={saveEditedSnapshot} filterOptions={tableFilterOptions} filters={{ asset: assetFilter, sector: sectorFilter, aiBucket: aiBucketFilter }} setFilters={{ asset: setAssetFilter, sector: setSectorFilter, aiBucket: setAiBucketFilter }} />}
+        {activeTab === 'Concentration & Holdings' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} excludedHoldingIds={hiddenHoldingIds} excludedHoldings={hiddenHoldings} includeHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} includeAll={() => setHiddenHoldingIds([])} ledgerMode={ledgerMode} setLedgerMode={setLedgerMode} editedCount={editedCount} discardEdits={discardHoldingEdits} saveEditedSnapshot={saveEditedSnapshot} filterOptions={tableFilterOptions} filters={{ asset: assetFilter, sector: sectorFilter, aiBucket: aiBucketFilter, size: sizeFilter }} setFilters={{ asset: setAssetFilter, sector: setSectorFilter, aiBucket: setAiBucketFilter, size: setSizeFilter }} />}
         {activeTab === 'AI Buildout' && <AIBuildout analytics={analytics} current={currentSnapshot} selectedHolding={selectedHolding} setSelectedHoldingId={setSelectedHoldingId} updateHolding={updateHolding} />}
         {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={scopedHoldings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
 
@@ -749,13 +751,23 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
   </section>
 }
 
-function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId, excludedHoldingIds, excludedHoldings, includeHolding, includeAll, ledgerMode, setLedgerMode, editedCount, discardEdits, saveEditedSnapshot, filterOptions, filters, setFilters }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void; excludedHoldingIds: string[]; excludedHoldings: Holding[]; includeHolding: (id: string) => void; includeAll: () => void; ledgerMode: LedgerMode; setLedgerMode: (mode: LedgerMode) => void; editedCount: number; discardEdits: () => void; saveEditedSnapshot: () => void; filterOptions: ReturnType<typeof tableFilters>; filters: { asset: string; sector: string; aiBucket: string }; setFilters: { asset: (value: string) => void; sector: (value: string) => void; aiBucket: (value: string) => void } }) {
+function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId, excludedHoldingIds, excludedHoldings, includeHolding, includeAll, ledgerMode, setLedgerMode, editedCount, discardEdits, saveEditedSnapshot, filterOptions, filters, setFilters }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void; excludedHoldingIds: string[]; excludedHoldings: Holding[]; includeHolding: (id: string) => void; includeAll: () => void; ledgerMode: LedgerMode; setLedgerMode: (mode: LedgerMode) => void; editedCount: number; discardEdits: () => void; saveEditedSnapshot: () => void; filterOptions: ReturnType<typeof tableFilters>; filters: { asset: string; sector: string; aiBucket: string; size: string }; setFilters: { asset: (value: string) => void; sector: (value: string) => void; aiBucket: (value: string) => void; size: (value: string) => void } }) {
+  const [treemapOpen, setTreemapOpen] = useState(false)
+  const nuisanceCount = analytics.holdings.filter((holding) => isNuisanceHolding(holding, analytics.total, minDollar, minWeight)).length
   return <section className="grid gap-5">
-    <div className="grid gap-5 xl:grid-cols-2">
-      <ChartPanel title="Top holdings ranked"><ChartLegend items={holdingColorLegend} /><BarList data={holdingBarData(analytics.topHoldings.slice(0, 15), analytics.total)} /></ChartPanel>
-      <ChartPanel title="Holdings treemap"><ChartLegend items={holdingColorLegend} /><HoldingsTreemap holdings={analytics.topHoldings} /></ChartPanel>
-    </div>
+    <ChartPanel title="Top holdings ranked" tall><ChartLegend items={holdingColorLegend} /><BarList data={holdingBarData(analytics.topHoldings.slice(0, 15), analytics.total)} /></ChartPanel>
+    <ChartPanel title="Holdings treemap" action={<button className="ghost" onClick={() => setTreemapOpen(true)}>Enlarge</button>} tall><ChartLegend items={holdingColorLegend} /><HoldingsTreemap holdings={analytics.topHoldings} /></ChartPanel>
+    {treemapOpen && <TreemapDialog holdings={analytics.topHoldings} onClose={() => setTreemapOpen(false)} />}
     <ConcentrationCutoffs analytics={analytics} />
+    <div className="threshold-strip">
+      <div>
+        <strong>Nuisance threshold</strong>
+        <span>Used for tiny-position warnings and the table size filter. It does not hide anything unless you choose a size filter below.</span>
+      </div>
+      <label className="field"><span>Below dollars</span><input type="number" className="control" value={minDollar} onChange={(event) => setMinDollar(Number(event.target.value))} /></label>
+      <label className="field"><span>Below portfolio %</span><input type="number" className="control" value={minWeight} onChange={(event) => setMinWeight(Number(event.target.value))} /></label>
+      <span className="threshold-count">{nuisanceCount} below threshold</span>
+    </div>
     <Panel title="Holdings table" action={<button className="ghost" onClick={() => exportCsv('current-view-holdings.csv', analytics.holdings)}><DownloadSimple size={16} /> Export current view</button>}>
       <div className="ledger-toolbar">
         <div>
@@ -771,16 +783,15 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
           <button className="primary" onClick={saveEditedSnapshot} disabled={!editedCount}>Save as edited snapshot</button>
         </div>
       </div>
-      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_repeat(6,minmax(9rem,auto))]">
+      <div className="table-filter-grid">
         <label className="search"><MagnifyingGlass size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search holdings" /></label>
-        <select className="control" value={filters.asset} onChange={(event) => setFilters.asset(event.target.value)}><option>All</option>{filterOptions.assets.map((asset) => <option key={asset}>{asset}</option>)}</select>
-        <select className="control" value={filters.sector} onChange={(event) => setFilters.sector(event.target.value)}><option>All</option>{filterOptions.sectors.map((sector) => <option key={sector}>{sector}</option>)}</select>
-        <select className="control" value={filters.aiBucket} onChange={(event) => setFilters.aiBucket(event.target.value)}><option>All</option>{filterOptions.aiBuckets.map((bucket) => <option key={bucket}>{bucket}</option>)}</select>
-        <select className="control" value={grouping[0] ?? ''} onChange={(event) => setGrouping(event.target.value ? [event.target.value] : [])}><option value="">No grouping</option><option value="accountName">Group account</option><option value="assetClass">Group asset class</option><option value="sector">Group sector</option></select>
-        <label className="compact-field">Min $<input type="number" className="control" value={minDollar} onChange={(event) => setMinDollar(Number(event.target.value))} /></label>
-        <label className="compact-field">Min %<input type="number" className="control" value={minWeight} onChange={(event) => setMinWeight(Number(event.target.value))} /></label>
+        <label className="field"><span>Asset class</span><select className="control" value={filters.asset} onChange={(event) => setFilters.asset(event.target.value)}><option>All</option>{filterOptions.assets.map((asset) => <option key={asset}>{asset}</option>)}</select></label>
+        <label className="field"><span>Sector</span><select className="control" value={filters.sector} onChange={(event) => setFilters.sector(event.target.value)}><option>All</option>{filterOptions.sectors.map((sector) => <option key={sector}>{sector}</option>)}</select></label>
+        <label className="field"><span>AI bucket</span><select className="control" value={filters.aiBucket} onChange={(event) => setFilters.aiBucket(event.target.value)}><option>All</option>{filterOptions.aiBuckets.map((bucket) => <option key={bucket}>{bucket}</option>)}</select></label>
+        <label className="field"><span>Size</span><select className="control" value={filters.size} onChange={(event) => setFilters.size(event.target.value)}><option>All sizes</option><option>Below nuisance threshold</option><option>Above nuisance threshold</option></select></label>
+        <label className="field"><span>Group rows</span><select className="control" value={grouping[0] ?? ''} onChange={(event) => setGrouping(event.target.value ? [event.target.value] : [])}><option value="">No grouping</option><option value="accountName">Group account</option><option value="assetClass">Group asset class</option><option value="sector">Group sector</option></select></label>
       </div>
-      <div className="overflow-auto rounded-xl border border-white/10">
+      <div className="table-shell">
         <table className="data-table">
           <thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} className={header.column.getCanSort() ? 'sortable-th' : ''} onClick={header.column.getToggleSortingHandler()}><span>{flexRender(header.column.columnDef.header, header.getContext())}<SortIndicator value={header.column.getIsSorted()} /></span></th>)}</tr>)}</thead>
           <tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} className={holdingExcludedInView(row.original, excludedHoldingIds) ? 'excluded-row' : ''} onClick={() => setSelectedHoldingId(row.original.id)}>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody>
@@ -927,8 +938,8 @@ function CutoffCard({ label, cutoff }: { label: string; cutoff?: { holding: Hold
     </>}
   </div>
 }
-function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
-  return <Panel title={title}><div className="chart-frame">{children}</div></Panel>
+function ChartPanel({ title, action, tall = false, children }: { title: string; action?: React.ReactNode; tall?: boolean; children: React.ReactNode }) {
+  return <Panel title={title} action={action}><div className={`chart-frame ${tall ? 'chart-frame-tall' : ''}`}>{children}</div></Panel>
 }
 function ChartLegend({ items }: { items: { label: string; color: string }[] }) {
   return <div className="chart-legend">{items.map((item) => <span key={item.label}><i style={{ backgroundColor: item.color }} />{item.label}</span>)}</div>
@@ -951,6 +962,18 @@ function HoldingsTreemap({ holdings }: { holdings: Holding[] }) {
   const total = holdings.reduce((sum, holding) => sum + holding.marketValue, 0)
   const data = holdings.map((holding) => ({ name: holding.ticker, size: holding.marketValue, weight: weight(holding.marketValue, total), color: holdingColor(holding) }))
   return <ResponsiveContainer width="100%" height="100%"><Treemap data={data} dataKey="size" aspectRatio={4 / 3} stroke="var(--app-bg)" content={<TreemapCell />} /></ResponsiveContainer>
+}
+function TreemapDialog({ holdings, onClose }: { holdings: Holding[]; onClose: () => void }) {
+  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="treemap-modal" role="dialog" aria-modal="true" aria-label="Enlarged holdings treemap" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="panel-header">
+        <h2>Holdings treemap</h2>
+        <button className="ghost" onClick={onClose}>Close</button>
+      </div>
+      <ChartLegend items={holdingColorLegend} />
+      <div className="treemap-modal-frame"><HoldingsTreemap holdings={holdings} /></div>
+    </section>
+  </div>
 }
 function TreemapCell(props: { x?: number; y?: number; width?: number; height?: number; name?: string; color?: string; size?: number; weight?: number }) {
   const { x = 0, y = 0, width = 0, height = 0, name = '', color = semanticColors.other, size = 0, weight: pct = 0 } = props
@@ -1036,7 +1059,7 @@ function buildWarnings(input: { holdings: Holding[]; total: number; top10Weight:
   if (cash < 2) warnings.push({ id: 'cash-low', severity: 'low', title: 'Low cash', detail: `Cash is ${percentFmt.format(cash)}%.` })
   const missing = input.holdings.filter((h) => h.ai.source === 'unknown' || !h.sector || !h.assetClass).length
   if (missing) warnings.push({ id: 'missing', severity: 'low', title: 'Missing classification data', detail: `${missing} holdings need AI, sector, or asset class cleanup.` })
-  const nuisance = input.holdings.filter((h) => h.marketValue < input.minDollar || weight(h.marketValue, input.total) < input.minWeight).length
+  const nuisance = input.holdings.filter((holding) => isNuisanceHolding(holding, input.total, input.minDollar, input.minWeight)).length
   if (nuisance) warnings.push({ id: 'nuisance', severity: 'low', title: 'Tiny nuisance positions', detail: `${nuisance} positions are below the consolidation threshold.` })
   return warnings
 }
@@ -1220,11 +1243,14 @@ function tableFilters(holdings: Holding[]) {
     aiBuckets: uniqueText(holdings.map((holding) => holding.ai.buckets[0]?.bucket ?? 'Missing')).sort(),
   }
 }
-function filterHoldingsForTable(holdings: Holding[], asset: string, sector: string, aiBucket: string) {
+function filterHoldingsForTable(holdings: Holding[], asset: string, sector: string, aiBucket: string, sizeFilter: string, minDollar: number, minWeight: number, total: number) {
   return holdings.filter((holding) => {
     if (asset !== 'All' && holding.assetClass !== asset) return false
     if (sector !== 'All' && holding.sector !== sector) return false
     if (aiBucket !== 'All' && (holding.ai.buckets[0]?.bucket ?? 'Missing') !== aiBucket) return false
+    const nuisance = isNuisanceHolding(holding, total, minDollar, minWeight)
+    if (sizeFilter === 'Below nuisance threshold' && !nuisance) return false
+    if (sizeFilter === 'Above nuisance threshold' && nuisance) return false
     return true
   })
 }
@@ -1288,8 +1314,11 @@ function repriceHolding(holding: Holding): Holding {
   if (!holding.price || !holding.shares) return holding
   return { ...holding, marketValue: holding.shares * holding.price }
 }
-function warningStatus(holding: Holding, total: number, minDollar: number, maxSingle: number) {
-  return holding.marketValue < minDollar ? 'Nuisance' : weight(holding.marketValue, total) > maxSingle ? 'High concentration' : holding.ai.source === 'unknown' ? 'Missing AI data' : 'Clear'
+function isNuisanceHolding(holding: Holding, total: number, minDollar: number, minWeight: number) {
+  return holding.marketValue < minDollar || weight(holding.marketValue, total) < minWeight
+}
+function warningStatus(holding: Holding, total: number, minDollar: number, minWeight: number, maxSingle: number) {
+  return isNuisanceHolding(holding, total, minDollar, minWeight) ? 'Nuisance' : weight(holding.marketValue, total) > maxSingle ? 'High concentration' : holding.ai.source === 'unknown' ? 'Missing AI data' : 'Clear'
 }
 function scenarioImpactDollars(analytics: ReturnType<typeof analyze>) {
   return analytics.total * (analytics.stressImpact / 100)
