@@ -195,6 +195,21 @@ export const strategyTemplates: StrategyTemplate[] = [
     },
   },
   template('conservative-ai-participation', 'Conservative AI 15', 'Lower-volatility profile with a 15% AI sleeve and stronger bond ballast.', [40, 15, 10, 25, 7, 3], [10, 20], 5, 35, 30, 'Capital preservation', '-12% to -24%', 5, 4, ['Lower expected volatility', 'Still participates in AI buildout', 'Fits capital preservation better'], ['Less upside in an AI rally', 'May feel too conservative'], 'A portfolio where preserving capital matters more than maximizing AI upside.', 'Lower AI sleeve'),
+  {
+    ...template('mega-bull-ai-buildout', 'Mega Bull AI 70', 'High-conviction 70% AI buildout sleeve focused on compute bottlenecks, memory, photonics, semis, and power.', [10, 70, 0, 5, 5, 10], [65, 75], 14, 82, 28, 'Maximum growth', '-35% to -58%', 10, 9, ['Maximum AI infrastructure participation', 'Concentrates around scarce bottlenecks', 'Still reserves a small cash/bond/alt sleeve'], ['Very high volatility', 'Can be hit hard by capex disappointment or semiconductor shocks', 'Requires comfort with concentrated single-name and subtheme risk'], 'A deliberately aggressive thesis portfolio where the user wants a mega-bull AI infrastructure posture, not a balanced family portfolio.', 'High-conviction concentration'),
+    aiInternalSplit: {
+      'GPUs / accelerators': 14,
+      Semiconductors: 14,
+      'Memory / storage': 16,
+      'Photonics / optical / interconnect': 14,
+      'Semiconductor equipment': 8,
+      'Power generation': 12,
+      'Grid / electrification': 10,
+      'Data centers / colocation': 5,
+      'Cooling / thermal management': 4,
+      Networking: 3,
+    },
+  },
 ]
 
 export const stressScenarios: StressScenario[] = [
