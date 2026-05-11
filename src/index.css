@@ -72,6 +72,11 @@ button:active {
   transform: translateY(1px) scale(.99);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
 .tab {
   white-space: nowrap;
   border-radius: 14px;
@@ -147,6 +152,14 @@ button:active {
   color: #f4f4f5;
   font-size: 1.35rem;
   font-weight: 650;
+}
+
+.metric-hint {
+  display: block;
+  margin-top: .25rem;
+  color: var(--muted-text);
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: .72rem;
 }
 
 :root[data-theme="light"] .metric-card strong {
@@ -285,6 +298,24 @@ button:active {
   white-space: nowrap;
 }
 
+.table-input {
+  width: 8.5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--app-text);
+  padding: .42rem .5rem;
+  outline: none;
+}
+
+.table-input-wide {
+  width: 12rem;
+}
+
+.table-input:focus {
+  border-color: rgba(16,185,129,.5);
+}
+
 .data-table tbody tr {
   cursor: pointer;
 }
@@ -369,6 +400,74 @@ button:active {
   color: var(--muted-text);
   text-align: center;
   padding: 1rem;
+}
+
+.ledger-toolbar {
+  display: grid;
+  gap: .85rem;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--soft-bg);
+  padding: .85rem;
+}
+
+.ledger-toolbar p {
+  margin: .55rem 0 0;
+  color: var(--muted-text);
+  font-size: .82rem;
+  line-height: 1.45;
+}
+
+.segmented {
+  display: inline-flex;
+  gap: .25rem;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--input-bg);
+  padding: .25rem;
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted-text);
+  padding: .5rem .75rem;
+  font-size: .82rem;
+}
+
+.segmented button.selected {
+  background: rgba(16,185,129,.14);
+  color: var(--app-text);
+}
+
+.edited-count,
+.edited-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(16,185,129,.24);
+  border-radius: 999px;
+  background: rgba(16,185,129,.1);
+  color: #34d399;
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: .72rem;
+}
+
+.edited-count {
+  padding: .5rem .65rem;
+}
+
+.edited-pill {
+  padding: .18rem .42rem;
+}
+
+@media (max-width: 900px) {
+  .ledger-toolbar {
+    grid-template-columns: 1fr;
+  }
 }
 
 .template-grid {

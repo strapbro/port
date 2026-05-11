@@ -50,6 +50,7 @@ type ClassificationSource = 'manual' | 'default' | 'imported' | 'unknown'
 type WarningSeverity = 'high' | 'medium' | 'low'
 type ActionType = 'Trim to target %' | 'Sell dollar amount' | 'Buy dollar amount' | 'Allocate cash to bucket'
 type ThemePreference = 'system' | 'dark' | 'light'
+type LedgerMode = 'uploaded' | 'sandbox'
 
 type AIBucket =
   | 'Big tech / hyperscalers'
@@ -156,6 +157,8 @@ type PersistedState = {
   selectedTemplateId: string
   customTemplates: StrategyTemplate[]
   themePreference: ThemePreference
+  ledgerMode: LedgerMode
+  holdingEditOverlay: Record<string, Partial<Holding>>
   hiddenHoldingIds: string[]
   recompCandidates: RecompCandidate[]
   manualActions: ManualSandboxAction[]
@@ -321,6 +324,8 @@ function App() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(persisted.selectedTemplateId)
   const [customTemplates, setCustomTemplates] = useState<StrategyTemplate[]>(persisted.customTemplates)
   const [themePreference, setThemePreference] = useState<ThemePreference>(persisted.themePreference)
+  const [ledgerMode, setLedgerMode] = useState<LedgerMode>(persisted.ledgerMode)
+  const [holdingEditOverlay, setHoldingEditOverlay] = useState<Record<string, Partial<Holding>>>(persisted.holdingEditOverlay)
   const [selectedStressId, setSelectedStressId] = useState('ai-disappointment')
   const [recompCandidates, setRecompCandidates] = useState<RecompCandidate[]>(persisted.recompCandidates)
   const [manualActions, setManualActions] = useState<ManualSandboxAction[]>(persisted.manualActions)
@@ -341,40 +346,46 @@ function App() {
 
   const currentSnapshot = snapshots.find((snapshot) => snapshot.id === selectedSnapshotId) ?? snapshots.at(-1)!
   const accountOptions = useMemo(() => accountScopes(currentSnapshot.holdings), [currentSnapshot.holdings])
+  const currentEffectiveHoldings = useMemo(() => applyHoldingEditOverlay(currentSnapshot.holdings, holdingEditOverlay), [currentSnapshot.holdings, holdingEditOverlay])
   const scopedHoldings = useMemo(() => {
-    const scoped = selectedAccountScope === 'combined' ? currentSnapshot.holdings : currentSnapshot.holdings.filter((holding) => holding.accountId === selectedAccountScope)
+    const source = ledgerMode === 'sandbox' ? currentEffectiveHoldings : currentSnapshot.holdings
+    const scoped = selectedAccountScope === 'combined' ? source : source.filter((holding) => holding.accountId === selectedAccountScope)
     return scoped.filter((holding) => !hiddenHoldingIds.includes(holding.id))
-  }, [currentSnapshot.holdings, hiddenHoldingIds, selectedAccountScope])
+  }, [currentEffectiveHoldings, currentSnapshot.holdings, hiddenHoldingIds, ledgerMode, selectedAccountScope])
   const hiddenHoldings = currentSnapshot.holdings.filter((holding) => hiddenHoldingIds.includes(holding.id))
+  const editedCount = scopedHoldings.filter((holding) => isHoldingEdited(holding.id, holdingEditOverlay)).length
   const allTemplates = useMemo(() => [...strategyTemplates, ...customTemplates], [customTemplates])
   const template = allTemplates.find((item) => item.id === selectedTemplateId) ?? strategyTemplates[0]
   const stress = stressScenarios.find((item) => item.id === selectedStressId) ?? stressScenarios[2]
   const analytics = useMemo(() => analyze(scopedHoldings, template, stress, minDollar, minWeight), [scopedHoldings, template, stress, minDollar, minWeight])
   const simulated = useMemo(() => simulateCandidates(scopedHoldings, [...recompCandidates, ...manualActions]), [scopedHoldings, recompCandidates, manualActions])
   const simulatedAnalytics = useMemo(() => analyze(simulated, template, stress, minDollar, minWeight), [simulated, template, stress, minDollar, minWeight])
-  const selectedHolding = currentSnapshot.holdings.find((item) => item.id === selectedHoldingId)
+  const selectedHolding = currentEffectiveHoldings.find((item) => item.id === selectedHoldingId)
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolveTheme(themePreference)
   }, [themePreference])
 
   useEffect(() => {
-    persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedAccountScope, selectedTemplateId: template.id, customTemplates, themePreference, hiddenHoldingIds, recompCandidates, manualActions, decisionLog })
-  }, [currentSnapshot.id, customTemplates, decisionLog, hiddenHoldingIds, manualActions, recompCandidates, selectedAccountScope, snapshots, template.id, themePreference])
+    persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedAccountScope, selectedTemplateId: template.id, customTemplates, themePreference, ledgerMode, holdingEditOverlay, hiddenHoldingIds, recompCandidates, manualActions, decisionLog })
+  }, [currentSnapshot.id, customTemplates, decisionLog, hiddenHoldingIds, holdingEditOverlay, ledgerMode, manualActions, recompCandidates, selectedAccountScope, snapshots, template.id, themePreference])
 
   const columns = useMemo<ColumnDef<Holding>[]>(() => [
-    { accessorKey: 'ticker', header: 'Ticker' },
+    { accessorKey: 'ticker', header: 'Ticker', cell: ({ row }) => <div className="flex items-center gap-2"><span>{row.original.ticker}</span>{isHoldingEdited(row.original.id, holdingEditOverlay) && <span className="edited-pill">Edited</span>}</div> },
     { accessorKey: 'securityName', header: 'Security' },
     { accessorKey: 'accountName', header: 'Account' },
-    { accessorKey: 'marketValue', header: 'Market value', cell: ({ row }) => dollarFmt.format(row.original.marketValue) },
+    { accessorKey: 'shares', header: 'Shares', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.shares} step={0.0001} onChange={(value) => commitHoldingEdit(repriceHolding({ ...row.original, shares: value }))} /> : percentFmt.format(row.original.shares) },
+    { accessorKey: 'price', header: 'Price', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.price ?? 0} step={0.01} onChange={(value) => commitHoldingEdit(repriceHolding({ ...row.original, price: value }))} /> : row.original.price ? dollarFmt.format(row.original.price) : '-' },
+    { accessorKey: 'marketValue', header: 'Market value', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.marketValue} step={1} onChange={(value) => commitHoldingEdit({ ...row.original, marketValue: value })} /> : dollarFmt.format(row.original.marketValue) },
     { id: 'portfolioWeight', header: 'Portfolio %', cell: ({ row }) => `${percentFmt.format(weight(row.original.marketValue, analytics.total))}%` },
-    { accessorKey: 'assetClass', header: 'Asset class' },
-    { accessorKey: 'sector', header: 'Sector' },
-    { id: 'aiBucket', header: 'AI bucket', cell: ({ row }) => row.original.ai.buckets[0]?.bucket ?? 'Missing' },
-    { id: 'aiScore', header: 'AI score', cell: ({ row }) => row.original.ai.score.toFixed(1) },
-    { id: 'directness', header: 'Directness', cell: ({ row }) => row.original.ai.directness },
+    { accessorKey: 'assetClass', header: 'Asset class', cell: ({ row }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.assetClass} options={assetClasses} onChange={(value) => commitHoldingEdit({ ...row.original, assetClass: value as AssetClass })} /> : row.original.assetClass },
+    { accessorKey: 'sector', header: 'Sector', cell: ({ row }) => ledgerMode === 'sandbox' ? <TextCell value={row.original.sector} onChange={(value) => commitHoldingEdit({ ...row.original, sector: value })} /> : row.original.sector },
+    { id: 'aiBucket', header: 'AI bucket', cell: ({ row }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.ai.buckets[0]?.bucket ?? aiBuckets[0]} options={aiBuckets} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, source: 'manual', buckets: [{ bucket: value as AIBucket, weight: 100 }] } })} /> : row.original.ai.buckets[0]?.bucket ?? 'Missing' },
+    { id: 'aiScore', header: 'AI score', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.ai.score} min={0} max={5} step={0.5} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, score: value, source: 'manual' } })} /> : row.original.ai.score.toFixed(1) },
+    { id: 'directness', header: 'Directness', cell: ({ row }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.ai.directness} options={['direct', 'indirect', 'none']} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, directness: value as Directness, source: 'manual' } })} /> : row.original.ai.directness },
+    { accessorKey: 'notes', header: 'Notes', cell: ({ row }) => ledgerMode === 'sandbox' ? <TextCell value={row.original.notes ?? ''} onChange={(value) => commitHoldingEdit({ ...row.original, notes: value })} /> : row.original.notes || '-' },
     { id: 'warning', header: 'Warning', cell: ({ row }) => row.original.marketValue < minDollar ? 'Nuisance' : weight(row.original.marketValue, analytics.total) > template.maxSingle ? 'High concentration' : row.original.ai.source === 'unknown' ? 'Missing AI data' : 'Clear' },
-  ], [analytics.total, minDollar, template.maxSingle])
+  ], [analytics.total, holdingEditOverlay, ledgerMode, minDollar, template.maxSingle])
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({ data: scopedHoldings, columns, state: { globalFilter: search, grouping, sorting }, onGlobalFilterChange: setSearch, onGroupingChange: setGrouping, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(), getGroupedRowModel: getGroupedRowModel(), getSortedRowModel: getSortedRowModel() })
 
@@ -386,7 +397,39 @@ function App() {
   }
 
   function updateHolding(updated: Holding) {
-    setSnapshots((items) => items.map((snapshot) => snapshot.id === currentSnapshot.id ? { ...snapshot, holdings: snapshot.holdings.map((item) => item.id === updated.id ? updated : item) } : snapshot))
+    commitHoldingEdit(updated)
+    setLedgerMode('sandbox')
+    setActiveTab('X-Ray & Concentration')
+  }
+
+  function commitHoldingEdit(updated: Holding) {
+    setLedgerMode('sandbox')
+    setHoldingEditOverlay((overlay) => ({ ...overlay, [updated.id]: updated }))
+  }
+
+  function discardHoldingEdits() {
+    setHoldingEditOverlay({})
+    setLedgerMode('uploaded')
+  }
+
+  function saveEditedSnapshot() {
+    const editedHoldings = applyHoldingEditOverlay(currentSnapshot.holdings, holdingEditOverlay).map((holding) => ({
+      ...holding,
+      id: `${holding.id}-edited-${crypto.randomUUID()}`,
+      ai: { ...holding.ai, buckets: [...holding.ai.buckets] },
+    }))
+    const snapshot: PortfolioSnapshot = {
+      id: crypto.randomUUID(),
+      name: `${currentSnapshot.name} edited`,
+      date: new Date().toISOString(),
+      source: `Edited sandbox from ${currentSnapshot.name}`,
+      holdings: editedHoldings,
+    }
+    setSnapshots((items) => [...items, snapshot])
+    setSelectedSnapshotId(snapshot.id)
+    setHoldingEditOverlay({})
+    setLedgerMode('uploaded')
+    setSelectedHoldingId(null)
   }
 
   async function parseUpload(files: FileList | File) {
@@ -467,7 +510,7 @@ function App() {
               <Metric label="Value" value={dollarFmt.format(analytics.total)} />
               <Metric label="AI exposure" value={`${percentFmt.format(analytics.aiExposure)}%`} />
               <Metric label="Top 10" value={`${percentFmt.format(analytics.top10Weight)}%`} />
-              <Metric label="Stress" value={`${percentFmt.format(analytics.stressImpact)}%`} />
+              <Metric label="Scenario" value={`${percentFmt.format(analytics.stressImpact)}% (${dollarFmt.format(scenarioImpactDollars(analytics))})`} />
             </div>
           </div>
         </header>
@@ -480,9 +523,9 @@ function App() {
 
         {activeTab === 'Overview' && <Overview analytics={analytics} template={template} templates={allTemplates} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} stress={stress} setTemplate={setSelectedTemplateId} setStress={setSelectedStressId} generateCandidates={generateCandidates} />}
         {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} setRows={setImportRows} message={importMessage} snapshotDate={importSnapshotDate} setSnapshotDate={setImportSnapshotDate} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
-        {activeTab === 'X-Ray & Concentration' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} hideHolding={(id) => setHiddenHoldingIds((items) => [...new Set([...items, id])])} hiddenHoldings={hiddenHoldings} unhideHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} />}
+        {activeTab === 'X-Ray & Concentration' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} hideHolding={(id) => setHiddenHoldingIds((items) => [...new Set([...items, id])])} hiddenHoldings={hiddenHoldings} unhideHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} ledgerMode={ledgerMode} setLedgerMode={setLedgerMode} editedCount={editedCount} discardEdits={discardHoldingEdits} saveEditedSnapshot={saveEditedSnapshot} />}
         {activeTab === 'AI Buildout' && <AIBuildout analytics={analytics} current={currentSnapshot} selectedHolding={selectedHolding} setSelectedHoldingId={setSelectedHoldingId} updateHolding={updateHolding} />}
-        {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={currentSnapshot.holdings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
+        {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={scopedHoldings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
 
         <footer className="mt-8 border-t border-white/10 pt-4 text-xs leading-5 text-zinc-500">
           This app is for portfolio analysis and planning only. It does not provide financial advice, tax advice, or execute trades. All outputs are simulations based on uploaded data and simplified assumptions.
@@ -511,7 +554,7 @@ function Overview({ analytics, template, templates, customTemplates, setCustomTe
         <p className="text-balance text-lg leading-8 text-app">{executiveSummary(analytics, template)}</p>
         <p className="mt-3 text-sm leading-6 text-muted">Risk-budget estimate is a rough weighted exposure score: cash counts near 0, bonds count lower, broad equity counts around 1, and higher-beta AI buckets count more. It is useful for comparing before/after simulations, not for predicting actual volatility.</p>
         <div className="mt-5 rounded-xl border border-app bg-soft p-3">
-          <label className="field"><span>Stress scenario</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label className="field"><span>Scenario sensitivity</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <p className="mt-3 text-sm leading-6 text-muted">{stressExplanation(stress)}</p>
           <StressShockList scenario={stress} />
         </div>
@@ -641,13 +684,27 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
   </section>
 }
 
-function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId, hideHolding, hiddenHoldings, unhideHolding }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void; hideHolding: (id: string) => void; hiddenHoldings: Holding[]; unhideHolding: (id: string) => void }) {
+function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId, hideHolding, hiddenHoldings, unhideHolding, ledgerMode, setLedgerMode, editedCount, discardEdits, saveEditedSnapshot }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void; hideHolding: (id: string) => void; hiddenHoldings: Holding[]; unhideHolding: (id: string) => void; ledgerMode: LedgerMode; setLedgerMode: (mode: LedgerMode) => void; editedCount: number; discardEdits: () => void; saveEditedSnapshot: () => void }) {
   return <section className="grid gap-5">
     <div className="grid gap-5 xl:grid-cols-2">
       <ChartPanel title="Top holdings ranked"><BarList data={analytics.topHoldings.slice(0, 15).map((h) => ({ name: h.ticker, value: weight(h.marketValue, analytics.total) }))} /></ChartPanel>
       <ChartPanel title="Holdings treemap"><Treemap width={500} height={300} data={analytics.topHoldings.map((h) => ({ name: h.ticker, size: h.marketValue }))} dataKey="size" aspectRatio={4 / 3} stroke="var(--app-bg)" fill="var(--accent)" /></ChartPanel>
     </div>
-    <Panel title="Holdings table" action={<button className="ghost" onClick={() => exportCsv('current-holdings.csv', analytics.holdings)}><DownloadSimple size={16} /> Export</button>}>
+    <Panel title="Holdings table" action={<button className="ghost" onClick={() => exportCsv('current-view-holdings.csv', analytics.holdings)}><DownloadSimple size={16} /> Export current view</button>}>
+      <div className="ledger-toolbar">
+        <div>
+          <div className="segmented">
+            <button className={ledgerMode === 'uploaded' ? 'selected' : ''} onClick={() => setLedgerMode('uploaded')}>Uploaded snapshot</button>
+            <button className={ledgerMode === 'sandbox' ? 'selected' : ''} onClick={() => setLedgerMode('sandbox')}>Edit sandbox</button>
+          </div>
+          <p>Sandbox edits update every chart and warning without changing the uploaded snapshot. Save them as a new edited snapshot when you want a permanent copy.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="edited-count">{editedCount} edited</span>
+          <button className="ghost" onClick={discardEdits}>Discard edits</button>
+          <button className="primary" onClick={saveEditedSnapshot} disabled={!editedCount}>Save as edited snapshot</button>
+        </div>
+      </div>
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
         <label className="search"><MagnifyingGlass size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search holdings" /></label>
         <select className="control" value={grouping[0] ?? ''} onChange={(event) => setGrouping(event.target.value ? [event.target.value] : [])}><option value="">No grouping</option><option value="accountName">Group account</option><option value="assetClass">Group asset class</option><option value="sector">Group sector</option></select>
@@ -656,7 +713,7 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
       </div>
       <div className="overflow-auto rounded-xl border border-white/10">
         <table className="data-table">
-          <thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}</thead>
+          <thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}<th>Actions</th></tr>)}</thead>
           <tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} onClick={() => setSelectedHoldingId(row.original.id)}>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}<td><button className="ghost" onClick={(event) => { event.stopPropagation(); hideHolding(row.original.id) }}>Hide</button></td></tr>)}</tbody>
         </table>
       </div>
@@ -689,9 +746,12 @@ function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualAc
   const [ticker, setTicker] = useState(holdings[0]?.ticker ?? '')
   const [amount, setAmount] = useState(5000)
   const allActions = [...candidates, ...manualActions]
+  const netChange = simulatedAnalytics.total - analytics.total
+  const currentScenario = scenarioImpactDollars(analytics)
+  const simulatedScenario = scenarioImpactDollars(simulatedAnalytics)
   function addManual(actionType: ActionType) {
     const holding = holdings.find((item) => item.ticker === ticker)
-    setManualActions((items) => [...items, { id: crypto.randomUUID(), actionType, tickerOrBucket: ticker, dollarAmount: amount, estimatedShares: holding?.price ? amount / holding.price : undefined, beforeWeight: holding ? weight(holding.marketValue, analytics.total) : 0, afterWeight: holding ? weight(holding.marketValue + (actionType.includes('Buy') ? amount : -amount), analytics.total) : 0, reason: 'Manual sandbox action.', riskImpact: 'User-defined impact.', alignmentImpact: 'Included in simulated before/after view.', stressImpact: 'Recomputed in simulated portfolio.', note: '', }])
+    setManualActions((items) => [...items, { id: crypto.randomUUID(), actionType, tickerOrBucket: ticker, dollarAmount: amount, estimatedShares: holding?.price ? amount / holding.price : undefined, beforeWeight: holding ? weight(holding.marketValue, analytics.total) : 0, afterWeight: holding ? weight(holding.marketValue + (actionType.includes('Buy') ? amount : -amount), analytics.total) : 0, reason: 'Manual sandbox action.', riskImpact: 'User-defined impact.', alignmentImpact: 'Included in simulated before/after view.', stressImpact: 'Scenario sensitivity recomputes in the simulated portfolio.', note: '', }])
   }
   return <section className="grid gap-5">
     <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
@@ -706,11 +766,17 @@ function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualAc
         <p className="text-sm leading-6 text-zinc-400">Auto-Recomp uses cash first, trims oversized concentration, reduces overexposed sleeves, and creates bucket-level allocate-here candidates when it should not name a new security.</p>
       </Panel>
     </div>
-    <div className="grid gap-5 xl:grid-cols-3">
-      <MetricCard icon={<Scales size={20} />} label="Current stress estimate" value={`${percentFmt.format(analytics.stressImpact)}%`} />
-      <MetricCard icon={<Scales size={20} />} label="Simulated stress estimate" value={`${percentFmt.format(simulatedAnalytics.stressImpact)}%`} />
-      <MetricCard icon={<ChartBar size={20} />} label="Cash remaining" value={dollarFmt.format(simulatedAnalytics.assetTotals.Cash ?? 0)} />
-    </div>
+    <Panel title="Simulation output">
+      <p className="mb-4 text-sm leading-6 text-muted">Recomp simulations are reallocations, so this view does not call the result profit or loss. Scenario sensitivity is a secondary what-if: each holding gets the scenario shock for its AI bucket first, then asset class fallback, and the weighted impacts are summed.</p>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <MetricCard icon={<Database size={20} />} label="Simulated portfolio value" value={dollarFmt.format(simulatedAnalytics.total)} hint={`Current: ${dollarFmt.format(analytics.total)}`} />
+        <MetricCard icon={<ChartBar size={20} />} label="Simulated action net change" value={dollarFmt.format(netChange)} hint={`${percentFmt.format(weight(netChange, analytics.total))}% vs current`} />
+        <MetricCard icon={<ChartBar size={20} />} label="Cash after simulation" value={dollarFmt.format(simulatedAnalytics.assetTotals.Cash ?? 0)} hint={`Before: ${dollarFmt.format(analytics.assetTotals.Cash ?? 0)}`} />
+        <MetricCard icon={<Sparkle size={20} />} label="AI exposure after simulation" value={`${percentFmt.format(simulatedAnalytics.aiExposure)}%`} hint={`Before: ${percentFmt.format(analytics.aiExposure)}%`} />
+        <MetricCard icon={<Funnel size={20} />} label="Top 10 after simulation" value={`${percentFmt.format(simulatedAnalytics.top10Weight)}%`} hint={`Before: ${percentFmt.format(analytics.top10Weight)}%`} />
+        <MetricCard icon={<Scales size={20} />} label="Stress scenario impact" value={`${percentFmt.format(simulatedAnalytics.stressImpact)}% (${dollarFmt.format(simulatedScenario)})`} hint={`Current: ${percentFmt.format(analytics.stressImpact)}% (${dollarFmt.format(currentScenario)})`} />
+      </div>
+    </Panel>
     <Panel title="Simulated trade candidate table" action={<button className="ghost" onClick={() => exportCsv('simulated-recomp-candidates.csv', allActions)}><DownloadSimple size={16} /> Export CSV</button>}>
       <ActionTable actions={allActions} />
     </Panel>
@@ -727,11 +793,20 @@ function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualAc
 function Metric({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs uppercase tracking-[0.16em] text-zinc-500">{label}</p><p className="mt-1 font-mono text-lg text-zinc-100">{value}</p></div>
 }
-function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return <div className="metric-card"><div className="text-emerald-300">{icon}</div><div><p>{label}</p><strong>{value}</strong></div></div>
+function MetricCard({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: string; hint?: string }) {
+  return <div className="metric-card"><div className="text-emerald-300">{icon}</div><div><p>{label}</p><strong>{value}</strong>{hint && <span className="metric-hint">{hint}</span>}</div></div>
 }
 function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return <section className="panel"><div className="panel-header"><h2>{title}</h2>{action}</div>{children}</section>
+}
+function NumberCell({ value, onChange, min, max, step }: { value: number; onChange: (value: number) => void; min?: number; max?: number; step?: number }) {
+  return <input className="table-input" type="number" value={Number.isFinite(value) ? value : 0} min={min} max={max} step={step} onClick={(event) => event.stopPropagation()} onChange={(event) => onChange(Number(event.target.value))} />
+}
+function TextCell({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <input className="table-input table-input-wide" value={value} onClick={(event) => event.stopPropagation()} onChange={(event) => onChange(event.target.value)} />
+}
+function SelectCell({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+  return <select className="table-input table-input-wide" value={value} onClick={(event) => event.stopPropagation()} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option}>{option}</option>)}</select>
 }
 function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return <Panel title={title}><div className="h-80">{children}</div></Panel>
@@ -843,18 +918,29 @@ function buildRecompCandidates(analytics: ReturnType<typeof analyze>, template: 
   return actions.slice(0, 12)
 }
 function candidate(actionType: ActionType, tickerOrBucket: string, dollarAmount: number, beforeWeight: number, afterWeight: number, reason: string, price?: number): RecompCandidate {
-  return { id: crypto.randomUUID(), actionType, tickerOrBucket, dollarAmount, estimatedShares: price ? dollarAmount / price : undefined, beforeWeight, afterWeight, reason, riskImpact: 'Estimated risk-budget contribution recalculates in the simulated view.', alignmentImpact: 'Moves closer to selected template guardrails.', stressImpact: 'Stress-test estimate updates after applying this simulated action.', warning: actionType.includes('Buy') && afterWeight > beforeWeight ? 'Check concentration before acting.' : undefined }
+  return { id: crypto.randomUUID(), actionType, tickerOrBucket, dollarAmount, estimatedShares: price ? dollarAmount / price : undefined, beforeWeight, afterWeight, reason, riskImpact: 'Estimated risk-budget contribution recalculates in the simulated view.', alignmentImpact: 'Moves closer to selected template guardrails.', stressImpact: 'Scenario sensitivity updates after applying this simulated action.', warning: actionType.includes('Buy') && afterWeight > beforeWeight ? 'Check concentration before acting.' : undefined }
 }
 function simulateCandidates(holdings: Holding[], actions: RecompCandidate[]) {
-  const simulated = holdings.map((h) => ({ ...h }))
+  const simulated = holdings.map(cloneHolding)
   actions.forEach((action) => {
     const item = simulated.find((h) => h.ticker === action.tickerOrBucket)
     if (!item) return
     const direction = action.actionType.includes('Buy') ? 1 : -1
-    item.marketValue = Math.max(0, item.marketValue + direction * action.dollarAmount)
+    const amount = direction < 0 ? Math.min(action.dollarAmount, item.marketValue) : action.dollarAmount
+    item.marketValue = Math.max(0, item.marketValue + direction * amount)
     if (item.price) item.shares = item.marketValue / item.price
+    if (item.assetClass !== 'Cash') adjustCash(simulated, direction < 0 ? amount : -amount)
   })
   return simulated.filter((h) => h.marketValue > 1)
+}
+function adjustCash(holdings: Holding[], amount: number) {
+  const cash = holdings.find((holding) => holding.assetClass === 'Cash')
+  if (!cash) {
+    if (amount > 0) holdings.push({ id: `simulation-cash-${crypto.randomUUID()}`, accountId: 'simulation', accountOwner: 'Portfolio', accountName: 'Simulation cash', accountType: 'Cash', accountCategory: 'Cash', ticker: 'CASH', securityName: 'Simulation cash', shares: amount, price: 1, marketValue: amount, assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none'), notes: 'Created by simulation offset.' })
+    return
+  }
+  cash.marketValue = Math.max(0, cash.marketValue + amount)
+  cash.shares = cash.price ? cash.marketValue / cash.price : cash.marketValue
 }
 function normalizeImportedRow(row: Record<string, unknown>, accountOwner: string, accountName: string, accountType: string, index: number): Holding | null {
   const ticker = clean(row.Symbol ?? row.Ticker ?? row.ticker)
@@ -891,6 +977,30 @@ function compactChartData(data: { name: string; value: number }[], limit: number
   const other = data.slice(limit - 1).reduce((sum, item) => sum + item.value, 0)
   return [...head, { name: 'Other AI buckets', value: other }]
 }
+function cloneHolding(holding: Holding): Holding {
+  return { ...holding, ai: { ...holding.ai, buckets: [...holding.ai.buckets] } }
+}
+function applyHoldingEditOverlay(holdings: Holding[], overlay: Record<string, Partial<Holding>>) {
+  return holdings.map((holding) => {
+    const edit = overlay[holding.id]
+    if (!edit) return cloneHolding(holding)
+    return {
+      ...cloneHolding(holding),
+      ...edit,
+      ai: edit.ai ? { ...holding.ai, ...edit.ai, buckets: edit.ai.buckets ? [...edit.ai.buckets] : [...holding.ai.buckets] } : { ...holding.ai, buckets: [...holding.ai.buckets] },
+    }
+  })
+}
+function isHoldingEdited(id: string, overlay: Record<string, Partial<Holding>>) {
+  return Boolean(overlay[id])
+}
+function repriceHolding(holding: Holding): Holding {
+  if (!holding.price || !holding.shares) return holding
+  return { ...holding, marketValue: holding.shares * holding.price }
+}
+function scenarioImpactDollars(analytics: ReturnType<typeof analyze>) {
+  return analytics.total * (analytics.stressImpact / 100)
+}
 function shortChartLabel(value: string) {
   return value
     .replace('Big tech / hyperscalers', 'Big tech')
@@ -907,7 +1017,7 @@ function parseMoney(value: unknown) { const cleanValue = String(value ?? '').rep
 function clean(value: unknown) { return String(value ?? '').replaceAll('"', '').trim() }
 function assetFromRaw(raw: string): AssetClass { return raw.toLowerCase().includes('cash') ? 'Cash' : raw.toLowerCase().includes('bond') ? 'Bonds/fixed income' : 'Broad US equity' }
 function stressExplanation(scenario: StressScenario) {
-  return `Stress estimate applies this scenario's simple percentage shocks to each holding by asset class or AI bucket, then totals the rough portfolio impact. It is a sensitivity check, not a forecast or risk model. Current scenario: ${scenario.name}.`
+  return `Scenario sensitivity applies this scenario's simple shocks to each holding by AI bucket first, then asset class fallback, and sums the weighted impact. It is a what-if comparison tool, not a forecast, volatility model, or institutional risk system. Current scenario: ${scenario.name}.`
 }
 function assetShortLabel(asset: AssetClass) {
   return {
@@ -989,9 +1099,9 @@ function loadState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey) || '{}')
     const snapshots = parsed.snapshots?.length ? parsed.snapshots.map((snapshot: PortfolioSnapshot) => ({ ...snapshot, holdings: snapshot.holdings.map((holding) => ({ ...holding, accountId: holding.accountId ?? slug(holding.accountName), accountCategory: holding.accountCategory ?? detectAccountType(holding.accountName) })) })) : sampleSnapshots()
-    return { snapshots, selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedAccountScope: parsed.selectedAccountScope ?? 'combined', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', customTemplates: parsed.customTemplates ?? [], themePreference: parsed.themePreference ?? 'system', hiddenHoldingIds: parsed.hiddenHoldingIds ?? [], recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], decisionLog: parsed.decisionLog ?? [] }
+    return { snapshots, selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedAccountScope: parsed.selectedAccountScope ?? 'combined', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', customTemplates: parsed.customTemplates ?? [], themePreference: parsed.themePreference ?? 'system', ledgerMode: parsed.ledgerMode ?? 'uploaded', holdingEditOverlay: parsed.holdingEditOverlay ?? {}, hiddenHoldingIds: parsed.hiddenHoldingIds ?? [], recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], decisionLog: parsed.decisionLog ?? [] }
   } catch {
-    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedAccountScope: 'combined', selectedTemplateId: 'diversified-ai-supply-chain', customTemplates: [], themePreference: 'system' as ThemePreference, hiddenHoldingIds: [], recompCandidates: [], manualActions: [], decisionLog: [] }
+    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedAccountScope: 'combined', selectedTemplateId: 'diversified-ai-supply-chain', customTemplates: [], themePreference: 'system' as ThemePreference, ledgerMode: 'uploaded' as LedgerMode, holdingEditOverlay: {}, hiddenHoldingIds: [], recompCandidates: [], manualActions: [], decisionLog: [] }
   }
 }
 function persist(state: PersistedState) {
