@@ -323,6 +323,40 @@ button:disabled {
   font-size: .68rem;
 }
 
+.cutoff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.cutoff-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft-bg);
+  padding: .85rem;
+}
+
+.cutoff-card p {
+  margin: 0 0 .35rem;
+  color: var(--muted-text);
+  font-size: .76rem;
+}
+
+.cutoff-card strong {
+  display: block;
+  color: var(--app-text);
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 1.1rem;
+}
+
+.cutoff-card span {
+  display: block;
+  margin-top: .35rem;
+  color: var(--muted-text);
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
 .data-table td {
   color: var(--app-text);
   white-space: nowrap;
@@ -496,6 +530,10 @@ button:disabled {
 
 @media (max-width: 900px) {
   .ledger-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .cutoff-grid {
     grid-template-columns: 1fr;
   }
 }

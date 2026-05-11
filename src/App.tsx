@@ -199,6 +199,14 @@ const semanticColors = {
   alternatives: '#be123c',
   other: '#475569',
 }
+const assetClassColors: Record<AssetClass, string> = {
+  'Broad US equity': semanticColors.index,
+  'AI buildout sleeve': semanticColors.ai,
+  'International equity': semanticColors.international,
+  'Bonds/fixed income': semanticColors.bonds,
+  Cash: semanticColors.cash,
+  'Alternatives/other': semanticColors.alternatives,
+}
 const chartAxis = 'var(--chart-axis)'
 const chartGrid = 'var(--chart-grid)'
 const chartTooltip = {
@@ -468,6 +476,7 @@ function App() {
   const simulated = useMemo(() => simulateCandidates(scopedHoldings, [...recompCandidates, ...manualActions]), [scopedHoldings, recompCandidates, manualActions])
   const simulatedAnalytics = useMemo(() => analyze(simulated, template, stress, minDollar, minWeight), [simulated, template, stress, minDollar, minWeight])
   const selectedHolding = scopedHoldings.find((item) => item.id === selectedHoldingId) ?? currentEffectiveHoldings.find((item) => item.id === selectedHoldingId)
+  const cumulativeWeightByHoldingId = useMemo(() => cumulativeWeights(analytics.topHoldings, analytics.total), [analytics.topHoldings, analytics.total])
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolveTheme(themePreference)
@@ -514,6 +523,7 @@ function App() {
     { accessorKey: 'price', header: 'Price', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.price ?? 0} step={0.01} onChange={(value) => commitHoldingEdit(repriceHolding({ ...row.original, price: value }))} /> : row.original.price ? dollarFmt.format(row.original.price) : '-' },
     { accessorKey: 'marketValue', header: 'Market value', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.marketValue} step={1} onChange={(value) => commitHoldingEdit({ ...row.original, marketValue: value })} /> : dollarFmt.format(row.original.marketValue) },
     { id: 'portfolioWeight', header: 'Portfolio %', accessorFn: (row) => weight(row.marketValue, analytics.total), cell: ({ getValue }) => `${percentFmt.format(Number(getValue()))}%` },
+    { id: 'cumulativeWeight', header: 'Cumulative %', accessorFn: (row) => cumulativeWeightByHoldingId.get(row.id) ?? 0, cell: ({ getValue }) => `${percentFmt.format(Number(getValue()))}%` },
     { accessorKey: 'assetClass', header: 'Asset class', cell: ({ row }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.assetClass} options={assetClasses} onChange={(value) => commitHoldingEdit({ ...row.original, assetClass: value as AssetClass })} /> : row.original.assetClass },
     { accessorKey: 'sector', header: 'Sector', cell: ({ row }) => ledgerMode === 'sandbox' ? <TextCell value={row.original.sector} onChange={(value) => commitHoldingEdit({ ...row.original, sector: value })} /> : row.original.sector },
     { id: 'aiBucket', header: 'AI bucket', accessorFn: (row) => row.ai.buckets[0]?.bucket ?? 'Missing', cell: ({ row, getValue }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.ai.buckets[0]?.bucket ?? aiBuckets[0]} options={aiBuckets} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, source: 'manual', buckets: [{ bucket: value as AIBucket, weight: 100 }] } })} /> : String(getValue()) },
@@ -521,7 +531,7 @@ function App() {
     { id: 'directness', header: 'Directness', accessorFn: (row) => row.ai.directness, cell: ({ row, getValue }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.ai.directness} options={['direct', 'indirect', 'none']} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, directness: value as Directness, source: 'manual' } })} /> : String(getValue()) },
     { accessorKey: 'notes', header: 'Notes', cell: ({ row }) => ledgerMode === 'sandbox' ? <TextCell value={row.original.notes ?? ''} onChange={(value) => commitHoldingEdit({ ...row.original, notes: value })} /> : row.original.notes || '-' },
     { id: 'warning', header: 'Warning', accessorFn: (row) => warningStatus(row, analytics.total, minDollar, template.maxSingle), cell: ({ getValue }) => String(getValue()) },
-  ], [analytics.total, commitHoldingEdit, holdingEditOverlay, ledgerMode, minDollar, template.maxSingle])
+  ], [analytics.total, commitHoldingEdit, cumulativeWeightByHoldingId, holdingEditOverlay, ledgerMode, minDollar, template.maxSingle])
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({ data: scopedHoldings, columns, state: { globalFilter: search, grouping, sorting }, onGlobalFilterChange: setSearch, onGroupingChange: setGrouping, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(), getGroupedRowModel: getGroupedRowModel(), getSortedRowModel: getSortedRowModel() })
 
@@ -747,10 +757,10 @@ function TemplateCard({ template, analytics, selected, onSelect }: { template: S
       <span className="template-pill">{template.targets['AI buildout sleeve']}% AI</span>
     </div>
     <div className="allocation-strip" aria-label={`${template.name} allocation mix`}>
-      {assetClasses.map((asset, index) => <span key={asset} title={`${asset}: ${template.targets[asset]}%`} style={{ width: `${template.targets[asset]}%`, backgroundColor: colors[index % colors.length] }} />)}
+      {assetClasses.map((asset) => <span key={asset} title={`${asset}: ${template.targets[asset]}%`} style={{ width: `${template.targets[asset]}%`, backgroundColor: assetClassColors[asset] }} />)}
     </div>
     <div className="allocation-legend">
-      {assetClasses.map((asset, index) => <span key={asset}><i style={{ backgroundColor: colors[index % colors.length] }} />{assetShortLabel(asset)} {template.targets[asset]}%</span>)}
+      {assetClasses.map((asset) => <span key={asset}><i style={{ backgroundColor: assetClassColors[asset] }} />{assetShortLabel(asset)} {template.targets[asset]}%</span>)}
     </div>
     <div className="template-stats">
       <span>Drawdown <strong>{template.drawdownRange}</strong></span>
@@ -842,6 +852,7 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
       <ChartPanel title="Top holdings ranked"><BarList data={holdingBarData(analytics.topHoldings.slice(0, 15), analytics.total)} /></ChartPanel>
       <ChartPanel title="Holdings treemap"><Treemap width={500} height={300} data={analytics.topHoldings.map((h) => ({ name: h.ticker, size: h.marketValue }))} dataKey="size" aspectRatio={4 / 3} stroke="var(--app-bg)" fill="var(--accent)" /></ChartPanel>
     </div>
+    <ConcentrationCutoffs analytics={analytics} />
     <Panel title="Holdings table" action={<button className="ghost" onClick={() => exportCsv('current-view-holdings.csv', analytics.holdings)}><DownloadSimple size={16} /> Export current view</button>}>
       <div className="ledger-toolbar">
         <div>
@@ -979,6 +990,32 @@ function SelectCell({ value, options, onChange }: { value: string; options: stri
 }
 function SortIndicator({ value }: { value: false | 'asc' | 'desc' }) {
   return <span className="sort-indicator">{value === 'asc' ? 'Asc' : value === 'desc' ? 'Desc' : 'Sort'}</span>
+}
+function ConcentrationCutoffs({ analytics }: { analytics: ReturnType<typeof analyze> }) {
+  const cutoffs = concentrationCutoffs(analytics.topHoldings, analytics.total)
+  return <Panel title="Concentration cutoffs">
+    <div className="cutoff-grid">
+      <CutoffCard label="50% checkpoint" cutoff={cutoffs[50]} />
+      <CutoffCard label="80% checkpoint" cutoff={cutoffs[80]} />
+      <div className="cutoff-card">
+        <p>Long tail</p>
+        <strong>{cutoffs[80] ? analytics.holdings.length - cutoffs[80].rank : analytics.holdings.length} holdings</strong>
+        <span>{cutoffs[80] ? `${percentFmt.format(Math.max(0, 100 - cutoffs[80].cumulative))}% after 80% checkpoint` : 'Portfolio has no holdings yet'}</span>
+      </div>
+    </div>
+  </Panel>
+}
+function CutoffCard({ label, cutoff }: { label: string; cutoff?: { holding: Holding; rank: number; before: number; cumulative: number } }) {
+  return <div className="cutoff-card">
+    <p>{label}</p>
+    {cutoff ? <>
+      <strong>{cutoff.rank} holdings</strong>
+      <span>Reached at {cutoff.holding.ticker}, crossing {percentFmt.format(cutoff.before)}% to {percentFmt.format(cutoff.cumulative)}%.</span>
+    </> : <>
+      <strong>-</strong>
+      <span>No holdings to calculate.</span>
+    </>}
+  </div>
 }
 function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return <Panel title={title}><div className="h-80">{children}</div></Panel>
@@ -1163,6 +1200,26 @@ function holdingBarData(holdings: Holding[], total: number): BarDatum[] {
     }
   })
 }
+function cumulativeWeights(holdings: Holding[], total: number) {
+  let cumulative = 0
+  const values = new Map<string, number>()
+  holdings.forEach((holding) => {
+    cumulative += weight(holding.marketValue, total)
+    values.set(holding.id, cumulative)
+  })
+  return values
+}
+function concentrationCutoffs(holdings: Holding[], total: number) {
+  const result: Partial<Record<50 | 80, { holding: Holding; rank: number; before: number; cumulative: number }>> = {}
+  let cumulative = 0
+  holdings.forEach((holding, index) => {
+    const before = cumulative
+    cumulative += weight(holding.marketValue, total)
+    if (!result[50] && cumulative >= 50) result[50] = { holding, rank: index + 1, before, cumulative }
+    if (!result[80] && cumulative >= 80) result[80] = { holding, rank: index + 1, before, cumulative }
+  })
+  return result
+}
 function compactDollar(value: number) {
   if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
   if (Math.abs(value) >= 1_000) return `$${Math.round(value / 1_000)}K`
@@ -1170,15 +1227,20 @@ function compactDollar(value: number) {
 }
 function holdingColor(holding: Holding) {
   if (holding.assetClass === 'Cash') return semanticColors.cash
-  if (holding.assetClass === 'Broad US equity' || holding.ai.buckets.some((bucket) => bucket.bucket === 'Broad passive index exposure')) return semanticColors.index
   if (holding.assetClass === 'Bonds/fixed income') return semanticColors.bonds
+  if (isBroadIndexHolding(holding)) return semanticColors.index
+  if (holding.ai.score > 0) return semanticColors.ai
   if (holding.assetClass === 'International equity') return semanticColors.international
-  if (holding.assetClass === 'AI buildout sleeve') return semanticColors.ai
   if (holding.assetClass === 'Alternatives/other') return semanticColors.alternatives
   return semanticColors.other
 }
+function isBroadIndexHolding(holding: Holding) {
+  const text = `${holding.ticker} ${holding.securityName} ${holding.sector}`.toLowerCase()
+  return holding.assetClass === 'Broad US equity' && (holding.sector === 'Broad Market' || /\b(index|s&p|nasdaq|dow|total stock|equal weight|dividend aristocrats|covered call|vanguard|spdr|invesco qqq)\b/.test(text))
+}
 function chartColor(name: string, index: number) {
   const lower = name.toLowerCase()
+  if (assetClasses.includes(name as AssetClass)) return assetClassColors[name as AssetClass]
   if (lower.includes('cash') || lower.includes('money market')) return semanticColors.cash
   if (lower.includes('broad us') || lower.includes('broad passive') || lower.includes('index') || lower.includes('s&p') || lower.includes('nasdaq')) return semanticColors.index
   if (lower.includes('bond') || lower.includes('fixed income')) return semanticColors.bonds
