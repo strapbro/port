@@ -285,9 +285,9 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   XLE: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
   ETHA: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
   IBIT: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
-  IREN: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Data centers / colocation', 1.5, 'indirect') },
-  DGXX: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Data centers / colocation', 1, 'indirect') },
-  BMNR: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
+  IREN: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Digital assets', ai: ai('Data centers / colocation', 1.5, 'indirect') },
+  DGXX: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Digital assets', ai: ai('Data centers / colocation', 1, 'indirect') },
+  BMNR: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
   AZO: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
   COST: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
   WMT: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
@@ -305,14 +305,14 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   SOFI: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
   MA: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
   V: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
-  AGNC: { assetClass: 'Alternatives/other', sector: 'Real Estate', ai: ai('Broad passive index exposure', 0, 'none') },
-  O: { assetClass: 'Alternatives/other', sector: 'Real Estate', ai: ai('Data centers / colocation', 0.5, 'indirect') },
-  MITT: { assetClass: 'Alternatives/other', sector: 'Real Estate', ai: ai('Broad passive index exposure', 0, 'none') },
-  SAR: { assetClass: 'Alternatives/other', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
-  CVX: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
-  APA: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
-  EPD: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
-  ET: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
+  AGNC: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Real Estate', ai: ai('Broad passive index exposure', 0, 'none') },
+  O: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Real Estate', ai: ai('Data centers / colocation', 0.5, 'indirect') },
+  MITT: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Real Estate', ai: ai('Broad passive index exposure', 0, 'none') },
+  SAR: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  CVX: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
+  APA: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
+  EPD: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
+  ET: { assetClass: 'Alternatives/other', securityType: 'Individual equity', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
   BHP: { assetClass: 'International equity', sector: 'Materials', ai: ai('Materials / specialty chemicals', 1, 'indirect') },
   CRS: { assetClass: 'Broad US equity', sector: 'Materials', ai: ai('Materials / specialty chemicals', 1, 'indirect') },
   CAT: { assetClass: 'Broad US equity', sector: 'Industrials', ai: ai('Grid / electrification', 1, 'indirect') },
@@ -322,6 +322,7 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   MMM: { assetClass: 'Broad US equity', sector: 'Industrials', ai: ai('Broad passive index exposure', 0, 'none') },
   F: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Robotics / automation', 0.5, 'indirect') },
   GM: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Robotics / automation', 0.5, 'indirect') },
+  WYNN: { assetClass: 'Broad US equity', securityType: 'Individual equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
   CVNA: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
   EBAY: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Enterprise software', 0.5, 'indirect') },
   MELI: { assetClass: 'International equity', sector: 'Consumer Discretionary', ai: ai('Enterprise software', 0.5, 'indirect') },
@@ -337,6 +338,7 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   SGOV: { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
   SPAXX: { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
   SNVXX: { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
+  '89236TJK2': { assetClass: 'Bonds/fixed income', securityType: 'Bond / fixed income', sector: 'Fixed Income', ai: ai('Broad passive index exposure', 0, 'none') },
   'Cash & Cash Investments': { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
 }
 
@@ -421,7 +423,7 @@ function holding(accountOwner: string, accountName: string, accountType: string,
     price,
     marketValue: shares * price,
     assetClass: (defaults.assetClass as AssetClass) ?? assetClass,
-    securityType: inferSecurityType(ticker, securityName, assetClass),
+    securityType: (defaults.securityType as SecurityType | undefined) ?? inferSecurityType(ticker, securityName, assetClass),
     sector: defaults.sector ?? sector,
     ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '', },
     costBasis: shares * price * 0.78,
@@ -973,7 +975,7 @@ function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualAc
     </Panel>
     <Panel title="Simulated trade candidate table" action={<button className="ghost" onClick={() => exportCsv('simulated-recomp-candidates.csv', allActions)}><DownloadSimple size={16} /> Export CSV</button>}>
       <p className="mb-3 text-sm leading-6 text-muted">Estimated shares use uploaded CSV prices. These are planning estimates only, not executable orders or advice about order type, timing, or limit price.</p>
-      <ActionTable actions={allActions} />
+      <ActionTable actions={allActions} holdings={holdings} />
     </Panel>
     <div className="grid gap-5 xl:grid-cols-2">
       <ChartPanel title="Current vs simulated allocation"><BeforeAfter before={analytics.assetClassData} after={simulatedAnalytics.assetClassData} /></ChartPanel>
@@ -1070,9 +1072,12 @@ function ClassificationEditor({ holding, updateHolding }: { holding: Holding; cu
     <button className="primary w-full justify-center" onClick={() => updateHolding(draft)}><PencilSimple size={16} /> Save classification</button>
   </div>
 }
-function ActionTable({ actions }: { actions: RecompCandidate[] }) {
+function ActionTable({ actions, holdings }: { actions: RecompCandidate[]; holdings: Holding[] }) {
   if (!actions.length) return <div className="empty"><Warning size={28} /><p>No simulated actions yet. Generate auto-recomp candidates or add manual sandbox actions.</p></div>
-  return <div className="overflow-auto rounded-xl border border-white/10"><table className="data-table"><thead><tr><th>Action</th><th>Ticker / bucket</th><th>Amount</th><th>Est. shares</th><th>Price used</th><th>Before</th><th>After</th><th>Reason</th><th>Impact</th></tr></thead><tbody>{actions.map((action) => <tr key={action.id}><td>{action.actionType}</td><td>{action.tickerOrBucket}</td><td>{dollarFmt.format(action.dollarAmount)}</td><td>{formatShares(action.estimatedShares)}</td><td>{action.priceUsed ? dollarFmt.format(action.priceUsed) : 'Price missing'}</td><td>{percentFmt.format(action.beforeWeight)}%</td><td>{percentFmt.format(action.afterWeight)}%</td><td>{action.reason}</td><td>{action.alignmentImpact}</td></tr>)}</tbody></table></div>
+  return <div className="overflow-auto rounded-xl border border-white/10"><table className="data-table"><thead><tr><th>Action</th><th>Ticker / bucket</th><th>Amount</th><th>Est. shares</th><th>Price used</th><th>Before</th><th>After</th><th>Reason</th><th>Impact</th></tr></thead><tbody>{actions.map((action) => {
+    const price = priceUsedForAction(action, holdings)
+    return <tr key={action.id}><td>{action.actionType}</td><td>{action.tickerOrBucket}</td><td>{dollarFmt.format(action.dollarAmount)}</td><td>{formatShares(action.estimatedShares ?? (price ? action.dollarAmount / price : undefined))}</td><td>{formatPriceUsed(action, holdings)}</td><td>{percentFmt.format(action.beforeWeight)}%</td><td>{percentFmt.format(action.afterWeight)}%</td><td>{action.reason}</td><td>{action.alignmentImpact}</td></tr>
+  })}</tbody></table></div>
 }
 
 function analyze(holdings: Holding[], template: StrategyTemplate, stress: StressScenario, minDollar: number, minWeight: number) {
@@ -1169,18 +1174,19 @@ function adjustCash(holdings: Holding[], amount: number) {
   cash.shares = cash.price ? cash.marketValue / cash.price : cash.marketValue
 }
 function normalizeImportedRow(row: Record<string, unknown>, accountOwner: string, accountName: string, accountType: string, index: number): Holding | null {
-  const ticker = clean(row.Symbol ?? row.Ticker ?? row.ticker)
+  const ticker = clean(row.Symbol ?? row.Ticker ?? row.ticker).toUpperCase()
   const marketValue = parseMoney(row['Mkt Val (Market Value)'] ?? row.market_value ?? row['Market Value'])
   if (!ticker || ticker.toLowerCase().includes('positions total') || ticker.toLowerCase() === 'no number') return null
   if (!ticker || !Number.isFinite(marketValue) || marketValue <= 0) return null
   const shares = parseMoney(row['Qty (Quantity)'] ?? row.shares ?? row.Quantity) || 0
-  const price = parseMoney(row.Price)
+  const explicitPrice = parseMoney(row.Price ?? row.price ?? row['Last Price'] ?? row['Current Price'] ?? row['Price ($)'])
+  const price = explicitPrice || (shares ? marketValue / shares : undefined)
   const defaults = defaultClassifications[ticker] ?? {}
   const normalizedAccountName = accountName.replace(/^Positions for account\s*/i, '')
   const securityName = clean(row.Description ?? row.security_name ?? row.Name) || ticker
   const rawAssetType = clean(row['Asset Type'])
   const assetClass = (defaults.assetClass as AssetClass) ?? assetFromRaw(rawAssetType)
-  return { id: `${accountName}-${ticker}-${index}-${crypto.randomUUID()}`, accountId: slug(normalizedAccountName), accountOwner, accountName: normalizedAccountName, accountType, accountCategory: detectAccountType(normalizedAccountName), ticker, securityName, shares, price, marketValue, assetClass, securityType: inferSecurityType(ticker, securityName, assetClass, rawAssetType), sector: defaults.sector ?? 'Unclassified', ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' }, costBasis: parseMoney(row['Cost Basis']), unrealizedGainLoss: parseMoney(row['Gain $ (Gain/Loss $)']) }
+  return { id: `${accountName}-${ticker}-${index}-${crypto.randomUUID()}`, accountId: slug(normalizedAccountName), accountOwner, accountName: normalizedAccountName, accountType, accountCategory: detectAccountType(normalizedAccountName), ticker, securityName, shares, price, marketValue, assetClass, securityType: (defaults.securityType as SecurityType | undefined) ?? inferSecurityType(ticker, securityName, assetClass, rawAssetType), sector: defaults.sector ?? 'Unclassified', ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' }, costBasis: parseMoney(row['Cost Basis']), unrealizedGainLoss: parseMoney(row['Gain $ (Gain/Loss $)']) }
 }
 function compareSnapshots(a: PortfolioSnapshot, b: PortfolioSnapshot) {
   const mapA = sumBy(a.holdings, (h) => h.ticker)
@@ -1246,6 +1252,15 @@ function compactDollar(value: number) {
 function formatShares(value?: number) {
   if (!Number.isFinite(value)) return '-'
   return shareFmt.format(value ?? 0)
+}
+function priceUsedForAction(action: RecompCandidate, holdings: Holding[]) {
+  return action.priceUsed ?? holdings.find((holding) => holding.ticker === action.tickerOrBucket)?.price
+}
+function formatPriceUsed(action: RecompCandidate, holdings: Holding[]) {
+  const price = priceUsedForAction(action, holdings)
+  if (price) return dollarFmt.format(price)
+  if ([...assetClasses, ...aiBuckets].includes(action.tickerOrBucket as AssetClass | AIBucket)) return 'N/A'
+  return 'Price missing'
 }
 function holdingColor(holding: Holding) {
   if (holding.assetClass === 'Cash') return semanticColors.cash
@@ -1500,14 +1515,20 @@ function loadState() {
 }
 function migrateHolding(holding: Holding): Holding | null {
   if (!holding.ticker || holding.ticker.toLowerCase().includes('positions total') || holding.ticker.toLowerCase() === 'no number') return null
-  const defaults = defaultClassifications[holding.ticker] ?? {}
+  const ticker = holding.ticker.toUpperCase()
+  const defaults = defaultClassifications[ticker] ?? {}
   const aiDefault = defaults.ai as AIExposureClassification | undefined
+  const assetClass = (defaults.assetClass as AssetClass | undefined) ?? holding.assetClass
+  const inferredType = inferSecurityType(ticker, holding.securityName, assetClass)
+  const price = holding.price || (holding.shares ? holding.marketValue / holding.shares : undefined)
   return {
     ...holding,
+    ticker,
+    price,
     accountId: holding.accountId ?? slug(holding.accountName),
     accountCategory: holding.accountCategory ?? detectAccountType(holding.accountName),
-    assetClass: (defaults.assetClass as AssetClass | undefined) ?? holding.assetClass,
-    securityType: holding.securityType ?? inferSecurityType(holding.ticker, holding.securityName, (defaults.assetClass as AssetClass | undefined) ?? holding.assetClass),
+    assetClass,
+    securityType: (defaults.securityType as SecurityType | undefined) ?? (holding.securityType && holding.securityType !== 'Other' ? holding.securityType : inferredType),
     sector: (defaults.sector as string | undefined) ?? holding.sector,
     ai: holding.ai?.source === 'manual' ? holding.ai : aiDefault ?? holding.ai ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' },
   }
