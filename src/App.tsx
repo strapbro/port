@@ -498,8 +498,9 @@ function App() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-app text-app">
-      <div className="mx-auto max-w-[1400px] px-4 py-5 md:px-6">
+    <main className="app-root min-h-[100dvh] bg-app text-app">
+      <AmbientBackdrop />
+      <div className="app-shell mx-auto max-w-[1400px] px-4 py-5 md:px-6">
         <header className="mb-6 grid gap-5 border-b border-white/10 pb-5 lg:grid-cols-[1.5fr_1fr]">
           <div>
             <div className="mb-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-emerald-300/80">
@@ -550,6 +551,10 @@ function App() {
       </div>
     </main>
   )
+}
+
+function AmbientBackdrop() {
+  return <div className="ambient-backdrop" aria-hidden="true" />
 }
 
 function Overview({ analytics, template, templates, customTemplates, setCustomTemplates, stress, setTemplate, setStress, generateCandidates }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate; templates: StrategyTemplate[]; customTemplates: StrategyTemplate[]; setCustomTemplates: React.Dispatch<React.SetStateAction<StrategyTemplate[]>>; stress: StressScenario; setTemplate: (id: string) => void; setStress: (id: string) => void; generateCandidates: () => void }) {
@@ -939,7 +944,8 @@ function CutoffCard({ label, cutoff }: { label: string; cutoff?: { holding: Hold
   </div>
 }
 function ChartPanel({ title, action, tall = false, children }: { title: string; action?: React.ReactNode; tall?: boolean; children: React.ReactNode }) {
-  return <Panel title={title} action={action}><div className={`chart-frame ${tall ? 'chart-frame-tall' : ''}`}>{children}</div></Panel>
+  const treemap = title.toLowerCase().includes('treemap')
+  return <Panel title={title} action={action}><div className={`chart-frame ${tall ? 'chart-frame-tall' : ''} ${treemap ? 'chart-frame-treemap' : ''}`}>{children}</div></Panel>
 }
 function ChartLegend({ items }: { items: { label: string; color: string }[] }) {
   return <div className="chart-legend">{items.map((item) => <span key={item.label}><i style={{ backgroundColor: item.color }} />{item.label}</span>)}</div>
@@ -961,7 +967,7 @@ function BarList({ data }: { data: BarDatum[] }) {
 function HoldingsTreemap({ holdings }: { holdings: Holding[] }) {
   const total = holdings.reduce((sum, holding) => sum + holding.marketValue, 0)
   const data = holdings.map((holding) => ({ name: holding.ticker, size: holding.marketValue, weight: weight(holding.marketValue, total), color: holdingColor(holding) }))
-  return <ResponsiveContainer width="100%" height="100%"><Treemap data={data} dataKey="size" aspectRatio={4 / 3} stroke="var(--app-bg)" content={<TreemapCell />} /></ResponsiveContainer>
+  return <div className="treemap-stage"><ResponsiveContainer width="100%" height="100%"><Treemap data={data} dataKey="size" aspectRatio={4 / 3} stroke="var(--app-bg)" content={<TreemapCell />} /></ResponsiveContainer></div>
 }
 function TreemapDialog({ holdings, onClose }: { holdings: Holding[]; onClose: () => void }) {
   return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>

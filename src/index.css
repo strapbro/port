@@ -15,6 +15,11 @@
   --chart-axis: #a1a1aa;
   --chart-grid: rgba(255,255,255,.09);
   --tooltip-bg: #18181b;
+  --ambient-a: oklch(0.48 0.12 166);
+  --ambient-b: oklch(0.62 0.10 215);
+  --ambient-c: oklch(0.68 0.10 55);
+  --ambient-d: oklch(0.52 0.08 320);
+  --ambient-opacity: .72;
   background: #09090b;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -36,6 +41,11 @@
   --chart-axis: #647067;
   --chart-grid: rgba(24,24,27,.1);
   --tooltip-bg: #ffffff;
+  --ambient-a: oklch(0.84 0.07 165);
+  --ambient-b: oklch(0.86 0.06 220);
+  --ambient-c: oklch(0.88 0.07 35);
+  --ambient-d: oklch(0.86 0.05 330);
+  --ambient-opacity: .86;
   background: #f7f7f4;
 }
 
@@ -59,6 +69,78 @@ body {
 .bg-panel { background: var(--panel-bg); }
 .bg-soft { background: var(--soft-bg); }
 .border-app { border-color: var(--border); }
+
+.app-root {
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+}
+
+.app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+.ambient-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(900px 520px at 12% -10%, color-mix(in oklch, var(--ambient-b) 18%, transparent), transparent 70%),
+    radial-gradient(760px 460px at 86% 2%, color-mix(in oklch, var(--ambient-a) 16%, transparent), transparent 72%),
+    radial-gradient(820px 540px at 78% 112%, color-mix(in oklch, var(--ambient-c) 11%, transparent), transparent 74%);
+  opacity: var(--ambient-opacity);
+}
+
+.ambient-backdrop::before {
+  content: "";
+  position: absolute;
+  inset: -18%;
+  background:
+    conic-gradient(from 218deg at 72% 12%, transparent 0 22%, color-mix(in oklch, var(--ambient-d) 10%, transparent) 30%, transparent 42% 100%),
+    radial-gradient(900px 320px at 52% 0%, color-mix(in oklch, var(--ambient-b) 10%, transparent), transparent 74%),
+    radial-gradient(980px 620px at 18% 92%, color-mix(in oklch, var(--ambient-a) 10%, transparent), transparent 76%);
+  filter: blur(24px) saturate(1.05);
+  transform: translate3d(0,0,0);
+  opacity: .92;
+}
+
+.ambient-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.014) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.45), transparent 76%);
+  opacity: .45;
+}
+
+:root[data-theme="light"] .ambient-backdrop::after {
+  background-image:
+    linear-gradient(rgba(24,24,27,.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24,24,27,.02) 1px, transparent 1px);
+  opacity: .38;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ambient-backdrop::before {
+    animation: ambient-drift 22s cubic-bezier(.45, 0, .2, 1) infinite alternate;
+  }
+}
+
+@keyframes ambient-drift {
+  from {
+    transform: translate3d(-1.5%, -1%, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(1.5%, .8%, 0) scale(1.035);
+  }
+}
 
 button, input, select, textarea {
   font: inherit;
@@ -351,6 +433,15 @@ button:disabled {
 
 .chart-frame-tall {
   height: 26rem;
+}
+
+.chart-frame-treemap {
+  padding-bottom: 0;
+}
+
+.treemap-stage {
+  width: 100%;
+  height: calc(100% - .95rem);
 }
 
 .chart-frame .recharts-wrapper,
