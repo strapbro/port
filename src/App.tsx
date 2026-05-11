@@ -501,19 +501,13 @@ function Overview({ analytics, template, templates, customTemplates, setCustomTe
       <MetricCard icon={<Pulse size={20} />} label="Risk-budget score" value={analytics.riskScore.toFixed(2)} />
     </div>
     <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-      <Panel title="Strategy templates" action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
-        <div className="template-grid">
-          {templates.map((item) => <TemplateCard key={item.id} template={item} analytics={analytics} selected={item.id === template.id} onSelect={() => setTemplate(item.id)} />)}
+      <Panel title="Current read" action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
+        <p className="text-balance text-lg leading-8 text-app">{executiveSummary(analytics, template)}</p>
+        <div className="mt-5 rounded-xl border border-app bg-soft p-3">
+          <label className="field"><span>Stress scenario</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <p className="mt-3 text-sm leading-6 text-muted">{stressExplanation(stress)}</p>
+          <StressShockList scenario={stress} />
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl border border-app bg-soft p-3"><p className="section-label mb-2">30-second read</p><p className="text-sm leading-6 text-app">{executiveSummary(analytics, template)}</p></div>
-          <div className="rounded-xl border border-app bg-soft p-3">
-            <label className="field"><span>Stress scenario</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-            <p className="mt-3 text-sm leading-6 text-muted">{stressExplanation(stress)}</p>
-            <StressShockList scenario={stress} />
-          </div>
-        </div>
-        <TemplateEditor template={template} isCustom={template.id.startsWith('custom-')} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} setTemplate={setTemplate} duplicateTemplate={duplicateTemplate} />
       </Panel>
       <WarningPanel warnings={analytics.warnings} />
     </div>
@@ -524,6 +518,12 @@ function Overview({ analytics, template, templates, customTemplates, setCustomTe
       <ChartPanel title="AI buildout exposure by bucket"><BarList data={analytics.aiBucketData.slice(0, 10)} /></ChartPanel>
       <ChartPanel title="Top 10 holdings"><BarList data={analytics.topHoldings.slice(0, 10).map((h) => ({ name: h.ticker, value: weight(h.marketValue, analytics.total) }))} /></ChartPanel>
     </div>
+    <Panel title="Strategy templates">
+      <div className="template-grid">
+        {templates.map((item) => <TemplateCard key={item.id} template={item} analytics={analytics} selected={item.id === template.id} onSelect={() => setTemplate(item.id)} />)}
+      </div>
+      <TemplateEditor template={template} isCustom={template.id.startsWith('custom-')} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} setTemplate={setTemplate} duplicateTemplate={duplicateTemplate} />
+    </Panel>
   </section>
 }
 
