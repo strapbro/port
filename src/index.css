@@ -3,11 +3,30 @@
 :root {
   font-family: Geist, "Geist Sans", "Aptos", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
+  --app-bg: #09090b;
+  --app-text: #f4f4f5;
+  --muted-text: #a1a1aa;
+  --panel-bg: rgba(24,24,27,.78);
+  --soft-bg: rgba(9,9,11,.34);
+  --border: rgba(255,255,255,.09);
+  --input-bg: rgba(9,9,11,.72);
   background: #09090b;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --app-bg: #f7f7f4;
+  --app-text: #18181b;
+  --muted-text: #647067;
+  --panel-bg: rgba(255,255,255,.88);
+  --soft-bg: rgba(236,238,234,.74);
+  --border: rgba(24,24,27,.12);
+  --input-bg: rgba(255,255,255,.92);
+  background: #f7f7f4;
 }
 
 * {
@@ -21,6 +40,19 @@ body {
     radial-gradient(circle at 20% -10%, rgba(52, 211, 153, 0.12), transparent 34rem),
     linear-gradient(135deg, #09090b 0%, #18181b 46%, #0c0f0e 100%);
 }
+
+:root[data-theme="light"] body {
+  background:
+    radial-gradient(circle at 20% -10%, rgba(5, 150, 105, 0.12), transparent 34rem),
+    linear-gradient(135deg, #f7f7f4 0%, #eef0ec 46%, #fafaf8 100%);
+}
+
+.bg-app { background: var(--app-bg); }
+.text-app { color: var(--app-text); }
+.text-muted { color: var(--muted-text); }
+.bg-panel { background: var(--panel-bg); }
+.bg-soft { background: var(--soft-bg); }
+.border-app { border-color: var(--border); }
 
 button, input, select, textarea {
   font: inherit;
@@ -49,9 +81,9 @@ button:active {
 }
 
 .panel {
-  border: 1px solid rgba(255,255,255,.09);
+  border: 1px solid var(--border);
   border-radius: 18px;
-  background: rgba(24,24,27,.78);
+  background: var(--panel-bg);
   padding: 1rem;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 18px 50px -36px rgba(0,0,0,.8);
 }
@@ -66,7 +98,7 @@ button:active {
 
 .panel h2 {
   margin: 0;
-  color: #f4f4f5;
+  color: var(--app-text);
   font-size: .95rem;
   font-weight: 650;
   letter-spacing: -.01em;
@@ -133,10 +165,10 @@ button:active {
 
 .control {
   width: 100%;
-  border: 1px solid rgba(255,255,255,.1);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: rgba(9,9,11,.72);
-  color: #f4f4f5;
+  background: var(--input-bg);
+  color: var(--app-text);
   padding: .68rem .75rem;
   outline: none;
 }
@@ -148,7 +180,7 @@ button:active {
 .field {
   display: grid;
   gap: .45rem;
-  color: #a1a1aa;
+  color: var(--muted-text);
   font-size: .78rem;
 }
 
@@ -186,9 +218,9 @@ button:active {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  border: 1px solid rgba(255,255,255,.08);
+  border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgba(9,9,11,.34);
+  background: var(--soft-bg);
   padding: .8rem;
 }
 
@@ -201,8 +233,8 @@ button:active {
 .data-table th {
   position: sticky;
   top: 0;
-  background: #18181b;
-  color: #a1a1aa;
+  background: var(--panel-bg);
+  color: var(--muted-text);
   font-weight: 600;
   text-align: left;
   white-space: nowrap;
@@ -215,7 +247,7 @@ button:active {
 }
 
 .data-table td {
-  color: #e4e4e7;
+  color: var(--app-text);
   white-space: nowrap;
 }
 
@@ -292,11 +324,107 @@ button:active {
   place-items: center;
   min-height: 220px;
   gap: .75rem;
-  border: 1px solid rgba(255,255,255,.08);
+  border: 1px solid var(--border);
   border-radius: 16px;
-  color: #a1a1aa;
+  color: var(--muted-text);
   text-align: center;
   padding: 1rem;
+}
+
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: .85rem;
+}
+
+.template-card {
+  display: grid;
+  gap: .8rem;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--soft-bg);
+  padding: .95rem;
+  color: var(--app-text);
+}
+
+.template-card-selected {
+  border-color: rgba(16,185,129,.7);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 18px 42px -32px rgba(16,185,129,.6);
+}
+
+.template-card h3 {
+  margin: 0 0 .28rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.template-card p,
+.template-stats span,
+.template-pros-cons span {
+  color: var(--muted-text);
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
+.template-pill {
+  white-space: nowrap;
+  border-radius: 999px;
+  background: rgba(16,185,129,.13);
+  color: #047857;
+  padding: .3rem .5rem;
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: .72rem;
+}
+
+.allocation-strip {
+  display: flex;
+  height: .6rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(113,113,122,.2);
+}
+
+.template-stats,
+.template-pros-cons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.template-stats strong {
+  color: var(--app-text);
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-weight: 650;
+}
+
+.template-pros-cons div {
+  display: grid;
+  gap: .28rem;
+}
+
+.template-pros-cons strong {
+  color: var(--app-text);
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+
+:root[data-theme="light"] .text-zinc-50,
+:root[data-theme="light"] .text-zinc-100,
+:root[data-theme="light"] .text-zinc-200,
+:root[data-theme="light"] .text-zinc-300 {
+  color: #18181b !important;
+}
+
+:root[data-theme="light"] .text-zinc-400,
+:root[data-theme="light"] .text-zinc-500 {
+  color: #647067 !important;
+}
+
+:root[data-theme="light"] .border-white\/10,
+:root[data-theme="light"] .border-white\/5 {
+  border-color: rgba(24,24,27,.11) !important;
 }
 
 @media (max-width: 767px) {

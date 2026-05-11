@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import {
@@ -49,6 +49,7 @@ type Directness = 'direct' | 'indirect' | 'none'
 type ClassificationSource = 'manual' | 'default' | 'imported' | 'unknown'
 type WarningSeverity = 'high' | 'medium' | 'low'
 type ActionType = 'Trim to target %' | 'Sell dollar amount' | 'Buy dollar amount' | 'Allocate cash to bucket'
+type ThemePreference = 'system' | 'dark' | 'light'
 
 type AIBucket =
   | 'Big tech / hyperscalers'
@@ -83,9 +84,11 @@ type AIExposureClassification = {
 }
 type Holding = {
   id: string
+  accountId: string
   accountOwner: string
   accountName: string
   accountType: string
+  accountCategory: string
   ticker: string
   securityName: string
   shares: number
@@ -146,6 +149,17 @@ type DecisionLogEntry = {
   warnings: AppWarning[]
   notes: string
 }
+type PersistedState = {
+  snapshots: PortfolioSnapshot[]
+  selectedSnapshotId: string
+  selectedAccountScope: string
+  selectedTemplateId: string
+  themePreference: ThemePreference
+  hiddenHoldingIds: string[]
+  recompCandidates: RecompCandidate[]
+  manualActions: ManualSandboxAction[]
+  decisionLog: DecisionLogEntry[]
+}
 const assetClasses: AssetClass[] = ['Broad US equity', 'AI buildout sleeve', 'International equity', 'Bonds/fixed income', 'Cash', 'Alternatives/other']
 const aiBuckets: AIBucket[] = [
   'Big tech / hyperscalers',
@@ -202,11 +216,11 @@ function ai(bucket: AIBucket, score: number, directness: Directness, extra: Buck
 }
 
 const strategyTemplates: StrategyTemplate[] = [
-  template('balanced-ai-growth', 'Balanced AI Growth', 'Meaningful AI upside while keeping a healthier diversified structure.', [40, 25, 10, 15, 5, 5], [20, 30], 7, 45, 35, 'Moderate growth', '-18% to -30%', 7, 5, ['Strong AI participation', 'Better diversified than a pure tech bet', 'Bonds and cash ballast'], ['Can still draw down in a tech bear market', 'May trail a pure AI rally'], 'A growth-oriented family portfolio that wants AI buildout exposure without going fully aggressive.', 'Watch single-name concentration'),
-  template('aggressive-ai-infrastructure', 'Aggressive AI Infrastructure', 'Maximize participation in the AI infrastructure buildout while keeping basic guardrails.', [30, 40, 5, 10, 5, 10], [35, 45], 10, 60, 40, 'High growth', '-25% to -42%', 9, 7, ['Highest AI upside participation', 'Strong exposure across compute, chips, power, data centers, and infrastructure'], ['Higher volatility', 'More vulnerable to AI capex disappointment'], 'An intentionally aggressive AI infrastructure bet.', 'Higher volatility'),
-  template('ai-barbell', 'AI Barbell', 'Pair aggressive AI upside with defensive ballast.', [25, 35, 5, 20, 10, 5], [30, 40], 8, 50, 35, 'Barbell growth', '-20% to -36%', 8, 6, ['Meaningful AI upside', 'More cash and bond protection', 'Dry powder after drawdowns'], ['Cash and bonds may drag in bull markets', 'Still exposed to AI theme volatility'], 'Someone bullish on AI but uncomfortable with full high-beta exposure.', 'Barbell volatility'),
+  template('balanced-ai-growth', 'Balanced AI 25', 'Balanced growth profile with a 25% AI buildout sleeve and normal ballast.', [40, 25, 10, 15, 5, 5], [20, 30], 7, 45, 35, 'Moderate growth', '-18% to -30%', 7, 5, ['Clear AI participation', 'Diversified core remains intact', 'Keeps bonds and cash in the mix'], ['Still exposed to tech drawdowns', 'May trail a concentrated AI rally'], 'A growth portfolio that wants AI exposure without becoming a pure tech bet.', 'Watch single-name concentration'),
+  template('aggressive-ai-infrastructure', 'Aggressive AI 40', 'High-conviction profile with a 40% AI infrastructure sleeve and wider guardrails.', [30, 40, 5, 10, 5, 10], [35, 45], 10, 60, 40, 'High growth', '-25% to -42%', 9, 7, ['Highest AI participation', 'Broad compute, power, and data center exposure'], ['Higher volatility', 'Sensitive to AI capex disappointment'], 'An intentionally aggressive AI infrastructure bet.', 'Higher volatility'),
+  template('ai-barbell', 'Barbell AI 35', 'Pairs a 35% AI sleeve with larger cash and bond ballast.', [25, 35, 5, 20, 10, 5], [30, 40], 8, 50, 35, 'Barbell growth', '-20% to -36%', 8, 6, ['Meaningful AI upside', 'More defensive ballast', 'Keeps dry powder available'], ['Cash and bonds can drag', 'Still carries AI theme volatility'], 'Bullish on AI, but uncomfortable with full high-beta exposure.', 'Barbell volatility'),
   {
-    ...template('diversified-ai-supply-chain', 'Diversified AI Supply Chain', 'Spread AI exposure across the full buildout chain, not only mega-cap tech and chips.', [35, 30, 10, 15, 5, 5], [25, 35], 7, 50, 30, 'Diversified growth', '-20% to -34%', 8, 7, ['Best fit for the broad AI infrastructure thesis', 'Captures second-order beneficiaries', 'Avoids relying only on mega-cap tech or chips'], ['More complex', 'Some infrastructure names may not move like classic AI stocks'], 'A portfolio built around the whole AI supply chain.', 'Balance the AI sleeve'),
+    ...template('diversified-ai-supply-chain', 'Supply Chain AI 30', '30% AI sleeve spread across chips, power, data centers, cooling, networking, and software.', [35, 30, 10, 15, 5, 5], [25, 35], 7, 50, 30, 'Diversified growth', '-20% to -34%', 8, 7, ['Best match for broad AI infrastructure', 'Reduces mega-cap/chip dependence', 'Includes second-order beneficiaries'], ['More moving parts', 'May lag a chip-led rally'], 'A portfolio built around the whole AI supply chain.', 'Balance the AI sleeve'),
     aiInternalSplit: {
       'Big tech / hyperscalers': 20,
       'Semiconductors': 25,
@@ -220,7 +234,7 @@ const strategyTemplates: StrategyTemplate[] = [
       Cybersecurity: 5,
     },
   },
-  template('conservative-ai-participation', 'Conservative AI Participation', 'Keep AI exposure meaningful while prioritizing drawdown control.', [40, 15, 10, 25, 7, 3], [10, 20], 5, 35, 30, 'Capital preservation', '-12% to -24%', 5, 4, ['Lower expected volatility', 'Still participates in AI buildout', 'Better fit for capital preservation'], ['Less upside if AI infrastructure stocks rally hard', 'May feel too conservative for high conviction'], 'A portfolio where preserving capital matters more than maximizing AI upside.', 'Lower AI sleeve'),
+  template('conservative-ai-participation', 'Conservative AI 15', 'Lower-volatility profile with a 15% AI sleeve and stronger bond ballast.', [40, 15, 10, 25, 7, 3], [10, 20], 5, 35, 30, 'Capital preservation', '-12% to -24%', 5, 4, ['Lower expected volatility', 'Still participates in AI buildout', 'Fits capital preservation better'], ['Less upside in an AI rally', 'May feel too conservative'], 'A portfolio where preserving capital matters more than maximizing AI upside.', 'Lower AI sleeve'),
 ]
 
 function template(id: string, name: string, purpose: string, targetValues: number[], aiRange: [number, number], maxSingle: number, maxTop10: number, maxBucket: number, risk: string, drawdownRange: string, upside: number, complexity: number, pros: string[], cons: string[], bestFor: string, warningLabel: string): StrategyTemplate {
@@ -239,22 +253,22 @@ const stressScenarios: StressScenario[] = [
 
 function sampleSnapshots(): PortfolioSnapshot[] {
   const holdings: Holding[] = [
-    holding('Family', 'Joint taxable', 'Taxable', 'VTI', 'Vanguard Total Stock Market ETF', 540, 247.8, 'Broad US equity', 'Broad Market'),
-    holding('Family', 'Joint taxable', 'Taxable', 'MSFT', 'Microsoft Corp', 220, 506.4, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'Joint taxable', 'Taxable', 'NVDA', 'NVIDIA Corp', 390, 187.6, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'Joint taxable', 'Taxable', 'ETN', 'Eaton Corp', 105, 421.3, 'AI buildout sleeve', 'Industrials'),
-    holding('Family', 'Joint taxable', 'Taxable', 'EQIX', 'Equinix Inc', 38, 812.4, 'AI buildout sleeve', 'Real Estate'),
-    holding('Family', 'Roth IRA', 'Roth IRA', 'AAPL', 'Apple Inc', 160, 293.05, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'Roth IRA', 'Roth IRA', 'AAPL', 'Apple Inc', 36, 293.05, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'Roth IRA', 'Roth IRA', 'ASML', 'ASML Holding NV', 22, 725.9, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', '401k', 'Retirement', 'BND', 'Vanguard Total Bond Market ETF', 710, 72.1, 'Bonds/fixed income', 'Fixed Income'),
-    holding('Family', '401k', 'Retirement', 'VXUS', 'Vanguard Total International Stock ETF', 620, 65.4, 'International equity', 'International Broad Market'),
-    holding('Family', '401k', 'Retirement', 'SGOV', 'iShares 0-3 Month Treasury Bond ETF', 260, 100.6, 'Cash', 'Cash & equivalents'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'VRT', 'Vertiv Holdings', 135, 176.7, 'AI buildout sleeve', 'Industrials'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'PANW', 'Palo Alto Networks', 55, 214.2, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'CEG', 'Constellation Energy', 80, 351.8, 'AI buildout sleeve', 'Utilities'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'AGNC', 'AGNC Investment Corp REIT', 300, 10.86, 'Alternatives/other', 'Real Estate'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'PSHZF', 'Pershing Square Holdings Rights', 157, 0.35, 'Alternatives/other', 'Financials'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'VTI', 'Vanguard Total Stock Market ETF', 540, 247.8, 'Broad US equity', 'Broad Market'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'MSFT', 'Microsoft Corp', 220, 506.4, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'NVDA', 'NVIDIA Corp', 390, 187.6, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'ETN', 'Eaton Corp', 105, 421.3, 'AI buildout sleeve', 'Industrials'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'EQIX', 'Equinix Inc', 38, 812.4, 'AI buildout sleeve', 'Real Estate'),
+    holding('Portfolio', 'Roth IRA', 'Roth IRA', 'AAPL', 'Apple Inc', 160, 293.05, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', 'Roth IRA', 'Roth IRA', 'AAPL', 'Apple Inc', 36, 293.05, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', 'Roth IRA', 'Roth IRA', 'ASML', 'ASML Holding NV', 22, 725.9, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', '401k', 'Retirement', 'BND', 'Vanguard Total Bond Market ETF', 710, 72.1, 'Bonds/fixed income', 'Fixed Income'),
+    holding('Portfolio', '401k', 'Retirement', 'VXUS', 'Vanguard Total International Stock ETF', 620, 65.4, 'International equity', 'International Broad Market'),
+    holding('Portfolio', '401k', 'Retirement', 'SGOV', 'iShares 0-3 Month Treasury Bond ETF', 260, 100.6, 'Cash', 'Cash & equivalents'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'VRT', 'Vertiv Holdings', 135, 176.7, 'AI buildout sleeve', 'Industrials'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'PANW', 'Palo Alto Networks', 55, 214.2, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'CEG', 'Constellation Energy', 80, 351.8, 'AI buildout sleeve', 'Utilities'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'AGNC', 'AGNC Investment Corp REIT', 300, 10.86, 'Alternatives/other', 'Real Estate'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'PSHZF', 'Pershing Square Holdings Rights', 157, 0.35, 'Alternatives/other', 'Financials'),
   ]
   const prior = holdings.map((item, index) => ({ ...item, id: `${item.id}-prior`, shares: index % 3 === 0 ? item.shares * 0.92 : item.shares, marketValue: index % 4 === 0 ? item.marketValue * 0.88 : item.marketValue * 0.96 }))
   return [
@@ -267,9 +281,11 @@ function holding(accountOwner: string, accountName: string, accountType: string,
   const defaults = defaultClassifications[ticker] ?? {}
   return {
     id: `${accountName}-${ticker}-${Math.random().toString(36).slice(2)}`,
+    accountId: slug(accountName),
     accountOwner,
     accountName,
     accountType,
+    accountCategory: detectAccountType(accountName),
     ticker,
     securityName,
     shares,
@@ -291,11 +307,14 @@ function App() {
   const persisted = loadState()
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>(persisted.snapshots)
   const [selectedSnapshotId, setSelectedSnapshotId] = useState(persisted.selectedSnapshotId)
+  const [selectedAccountScope, setSelectedAccountScope] = useState(persisted.selectedAccountScope)
   const [activeTab, setActiveTab] = useState('Overview')
   const [selectedTemplateId, setSelectedTemplateId] = useState(persisted.selectedTemplateId)
+  const [themePreference, setThemePreference] = useState<ThemePreference>(persisted.themePreference)
   const [selectedStressId, setSelectedStressId] = useState('ai-disappointment')
   const [recompCandidates, setRecompCandidates] = useState<RecompCandidate[]>(persisted.recompCandidates)
   const [manualActions, setManualActions] = useState<ManualSandboxAction[]>(persisted.manualActions)
+  const [hiddenHoldingIds, setHiddenHoldingIds] = useState<string[]>(persisted.hiddenHoldingIds)
   const [decisionLog, setDecisionLog] = useState<DecisionLogEntry[]>(persisted.decisionLog)
   const [search, setSearch] = useState('')
   const [grouping, setGrouping] = useState<GroupingState>([])
@@ -304,20 +323,32 @@ function App() {
   const [minWeight, setMinWeight] = useState(0.25)
   const [importRows, setImportRows] = useState<Record<string, unknown>[]>([])
   const [importName, setImportName] = useState('')
-  const [importAccountOwner, setImportAccountOwner] = useState('Family')
+  const [importAccountOwner, setImportAccountOwner] = useState('Portfolio')
   const [importAccountType, setImportAccountType] = useState('Tax-advantaged')
   const [importMessage, setImportMessage] = useState('')
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | null>(null)
 
   const currentSnapshot = snapshots.find((snapshot) => snapshot.id === selectedSnapshotId) ?? snapshots.at(-1)!
+  const accountOptions = useMemo(() => accountScopes(currentSnapshot.holdings), [currentSnapshot.holdings])
+  const scopedHoldings = useMemo(() => {
+    const scoped = selectedAccountScope === 'combined' ? currentSnapshot.holdings : currentSnapshot.holdings.filter((holding) => holding.accountId === selectedAccountScope)
+    return scoped.filter((holding) => !hiddenHoldingIds.includes(holding.id))
+  }, [currentSnapshot.holdings, hiddenHoldingIds, selectedAccountScope])
+  const hiddenHoldings = currentSnapshot.holdings.filter((holding) => hiddenHoldingIds.includes(holding.id))
   const template = strategyTemplates.find((item) => item.id === selectedTemplateId) ?? strategyTemplates[0]
   const stress = stressScenarios.find((item) => item.id === selectedStressId) ?? stressScenarios[2]
-  const analytics = useMemo(() => analyze(currentSnapshot.holdings, template, stress, minDollar, minWeight), [currentSnapshot, template, stress, minDollar, minWeight])
-  const simulated = useMemo(() => simulateCandidates(currentSnapshot.holdings, [...recompCandidates, ...manualActions]), [currentSnapshot, recompCandidates, manualActions])
+  const analytics = useMemo(() => analyze(scopedHoldings, template, stress, minDollar, minWeight), [scopedHoldings, template, stress, minDollar, minWeight])
+  const simulated = useMemo(() => simulateCandidates(scopedHoldings, [...recompCandidates, ...manualActions]), [scopedHoldings, recompCandidates, manualActions])
   const simulatedAnalytics = useMemo(() => analyze(simulated, template, stress, minDollar, minWeight), [simulated, template, stress, minDollar, minWeight])
   const selectedHolding = currentSnapshot.holdings.find((item) => item.id === selectedHoldingId)
 
-  persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedTemplateId: template.id, recompCandidates, manualActions, decisionLog })
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolveTheme(themePreference)
+  }, [themePreference])
+
+  useEffect(() => {
+    persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedAccountScope, selectedTemplateId: template.id, themePreference, hiddenHoldingIds, recompCandidates, manualActions, decisionLog })
+  }, [currentSnapshot.id, decisionLog, hiddenHoldingIds, manualActions, recompCandidates, selectedAccountScope, snapshots, template.id, themePreference])
 
   const columns = useMemo<ColumnDef<Holding>[]>(() => [
     { accessorKey: 'ticker', header: 'Ticker' },
@@ -333,7 +364,7 @@ function App() {
     { id: 'warning', header: 'Warning', cell: ({ row }) => row.original.marketValue < minDollar ? 'Nuisance' : weight(row.original.marketValue, analytics.total) > template.maxSingle ? 'High concentration' : row.original.ai.source === 'unknown' ? 'Missing AI data' : 'Clear' },
   ], [analytics.total, minDollar, template.maxSingle])
   // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({ data: currentSnapshot.holdings, columns, state: { globalFilter: search, grouping, sorting }, onGlobalFilterChange: setSearch, onGroupingChange: setGrouping, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(), getGroupedRowModel: getGroupedRowModel(), getSortedRowModel: getSortedRowModel() })
+  const table = useReactTable({ data: scopedHoldings, columns, state: { globalFilter: search, grouping, sorting }, onGlobalFilterChange: setSearch, onGroupingChange: setGrouping, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(), getGroupedRowModel: getGroupedRowModel(), getSortedRowModel: getSortedRowModel() })
 
   function generateCandidates() {
     const candidates = buildRecompCandidates(analytics, template)
@@ -346,31 +377,39 @@ function App() {
     setSnapshots((items) => items.map((snapshot) => snapshot.id === currentSnapshot.id ? { ...snapshot, holdings: snapshot.holdings.map((item) => item.id === updated.id ? updated : item) } : snapshot))
   }
 
-  async function parseUpload(file: File) {
-    const buffer = await file.arrayBuffer()
-    const text = new TextDecoder().decode(buffer)
-    let rows: Record<string, unknown>[]
-    let sourceName = file.name
-    if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
-      const workbook = XLSX.read(buffer)
-      const sheet = workbook.Sheets[workbook.SheetNames[0]]
-      rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
-    } else {
-      const lines = text.split(/\r?\n/)
-      const accountLine = lines.find((line) => line.includes('Positions for account'))
-      sourceName = accountLine?.replaceAll('"', '').trim() || file.name
-      const headerIndex = lines.findIndex((line) => line.includes('Symbol') && line.includes('Description'))
-      const parseText = headerIndex >= 0 ? lines.slice(headerIndex).join('\n') : text
-      const parsed = Papa.parse<Record<string, unknown>>(parseText, { header: true, skipEmptyLines: true })
-      rows = parsed.data
+  async function parseUpload(files: FileList | File) {
+    const fileList = files instanceof File ? [files] : Array.from(files)
+    const stagedRows: Record<string, unknown>[] = []
+    for (const file of fileList) {
+      const buffer = await file.arrayBuffer()
+      const text = new TextDecoder().decode(buffer)
+      let rows: Record<string, unknown>[]
+      let sourceName = file.name
+      let detected = detectAccountFromText(file.name, file.name)
+      if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
+        const workbook = XLSX.read(buffer)
+        const sheet = workbook.Sheets[workbook.SheetNames[0]]
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+      } else {
+        const lines = text.split(/\r?\n/)
+        const accountLine = lines.find((line) => line.includes('Positions for account'))
+        sourceName = accountLine?.replaceAll('"', '').trim() || file.name
+        detected = detectAccountFromText(sourceName, file.name)
+        const headerIndex = lines.findIndex((line) => line.includes('Symbol') && line.includes('Description'))
+        const parseText = headerIndex >= 0 ? lines.slice(headerIndex).join('\n') : text
+        const parsed = Papa.parse<Record<string, unknown>>(parseText, { header: true, skipEmptyLines: true })
+        rows = parsed.data
+      }
+      rows.filter((row) => row.Symbol || row.ticker || row.Ticker).forEach((row) => stagedRows.push({ ...row, __accountName: detected.name, __accountType: detected.type, __accountId: detected.id, __source: sourceName }))
     }
-    setImportRows(rows.filter((row) => row.Symbol || row.ticker || row.Ticker))
-    setImportName(sourceName)
-    setImportMessage(`${rows.length} rows detected. Review account fields, then save as a snapshot.`)
+    setImportRows(stagedRows)
+    setImportName(fileList.length > 1 ? `Combined ${fileList.length}-account upload` : String(stagedRows[0]?.__source ?? fileList[0]?.name ?? 'Uploaded file'))
+    setImportAccountType(String(stagedRows[0]?.__accountType ?? 'Tax-advantaged'))
+    setImportMessage(`${stagedRows.length} rows detected across ${new Set(stagedRows.map((row) => row.__accountId)).size} account(s). Review, then save as a snapshot.`)
   }
 
   function saveImportSnapshot() {
-    const holdings = importRows.map((row, index) => normalizeImportedRow(row, importAccountOwner, importName || 'Uploaded account', importAccountType, index)).filter((row): row is Holding => Boolean(row))
+    const holdings = importRows.map((row, index) => normalizeImportedRow(row, importAccountOwner, String(row.__accountName ?? importName ?? 'Uploaded account'), String(row.__accountType ?? importAccountType), index)).filter((row): row is Holding => Boolean(row))
     if (!holdings.length) {
       setImportMessage('No usable holdings found. Confirm the file includes ticker and market value columns.')
       return
@@ -383,7 +422,7 @@ function App() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-zinc-950 text-zinc-100">
+    <main className="min-h-[100dvh] bg-app text-app">
       <div className="mx-auto max-w-[1400px] px-4 py-5 md:px-6">
         <header className="mb-6 grid gap-5 border-b border-white/10 pb-5 lg:grid-cols-[1.5fr_1fr]">
           <div>
@@ -392,16 +431,20 @@ function App() {
               <span>Offline portfolio planning</span>
             </div>
             <h1 className="max-w-4xl text-3xl font-semibold tracking-tight text-zinc-50 md:text-5xl">AI Buildout Portfolio Recomp Cockpit</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400 md:text-base">
-              A private browser workspace for x-raying family holdings, measuring AI infrastructure exposure, stress testing simple scenarios, and drafting simulated recomp candidates.
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted md:text-base">
+              A private browser workspace for x-raying portfolio holdings, measuring AI infrastructure exposure, stress testing simple scenarios, and drafting simulated recomp candidates.
             </p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <div className="rounded-2xl border border-app bg-panel p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-sm text-zinc-400">Current snapshot</span>
+              <span className="text-sm text-muted">Current snapshot</span>
               <select className="control" value={currentSnapshot.id} onChange={(event) => setSelectedSnapshotId(event.target.value)}>
                 {snapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{snapshot.name}</option>)}
               </select>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="field"><span>Account scope</span><select className="control" value={selectedAccountScope} onChange={(event) => setSelectedAccountScope(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>
+              <label className="field"><span>Theme</span><select className="control" value={themePreference} onChange={(event) => setThemePreference(event.target.value as ThemePreference)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <Metric label="Value" value={dollarFmt.format(analytics.total)} />
@@ -412,7 +455,7 @@ function App() {
           </div>
         </header>
 
-        <nav className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-2">
+        <nav className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-app bg-panel p-2">
           {['Overview', 'Import & Snapshots', 'X-Ray & Concentration', 'AI Buildout', 'Recomp Sandbox'].map((tab) => (
             <button key={tab} className={`tab ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>{tab}</button>
           ))}
@@ -420,7 +463,7 @@ function App() {
 
         {activeTab === 'Overview' && <Overview analytics={analytics} template={template} stress={stress} setTemplate={setSelectedTemplateId} setStress={setSelectedStressId} generateCandidates={generateCandidates} />}
         {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} message={importMessage} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
-        {activeTab === 'X-Ray & Concentration' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} />}
+        {activeTab === 'X-Ray & Concentration' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} hideHolding={(id) => setHiddenHoldingIds((items) => [...new Set([...items, id])])} hiddenHoldings={hiddenHoldings} unhideHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} />}
         {activeTab === 'AI Buildout' && <AIBuildout analytics={analytics} current={currentSnapshot} selectedHolding={selectedHolding} setSelectedHoldingId={setSelectedHoldingId} updateHolding={updateHolding} />}
         {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={currentSnapshot.holdings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
 
@@ -442,10 +485,12 @@ function Overview({ analytics, template, stress, setTemplate, setStress, generat
       <MetricCard icon={<Pulse size={20} />} label="Risk-budget score" value={analytics.riskScore.toFixed(2)} />
     </div>
     <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-      <Panel title="30-second read" action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
-        <p className="text-balance text-lg leading-8 text-zinc-200">{executiveSummary(analytics, template)}</p>
+      <Panel title="Strategy templates" action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
+        <div className="template-grid">
+          {strategyTemplates.map((item) => <TemplateCard key={item.id} template={item} analytics={analytics} selected={item.id === template.id} onSelect={() => setTemplate(item.id)} />)}
+        </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
-          <label className="field"><span>Selected strategy template</span><select className="control" value={template.id} onChange={(event) => setTemplate(event.target.value)}>{strategyTemplates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <div className="rounded-xl border border-app bg-soft p-3"><p className="section-label mb-2">30-second read</p><p className="text-sm leading-6 text-app">{executiveSummary(analytics, template)}</p></div>
           <label className="field"><span>Stress scenario</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         </div>
       </Panel>
@@ -461,7 +506,33 @@ function Overview({ analytics, template, stress, setTemplate, setStress, generat
   </section>
 }
 
-function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: PortfolioSnapshot; rows: Record<string, unknown>[]; message: string; accountOwner: string; accountType: string; setAccountOwner: (v: string) => void; setAccountType: (v: string) => void; parseUpload: (file: File) => void; saveImportSnapshot: () => void; setSnapshots: React.Dispatch<React.SetStateAction<PortfolioSnapshot[]>>; setSelectedSnapshotId: (id: string) => void; generateCandidates: () => void }) {
+function TemplateCard({ template, analytics, selected, onSelect }: { template: StrategyTemplate; analytics: ReturnType<typeof analyze>; selected: boolean; onSelect: () => void }) {
+  const drift = assetClasses.reduce((sum, asset) => sum + Math.abs(weight(analytics.assetTotals[asset] ?? 0, analytics.total) - template.targets[asset]), 0)
+  return <button className={`template-card ${selected ? 'template-card-selected' : ''}`} onClick={onSelect}>
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h3>{template.name}</h3>
+        <p>{template.purpose}</p>
+      </div>
+      <span className="template-pill">{template.targets['AI buildout sleeve']}% AI</span>
+    </div>
+    <div className="allocation-strip" aria-hidden="true">
+      {assetClasses.map((asset, index) => <span key={asset} style={{ width: `${template.targets[asset]}%`, backgroundColor: colors[index % colors.length] }} />)}
+    </div>
+    <div className="template-stats">
+      <span>Drawdown <strong>{template.drawdownRange}</strong></span>
+      <span>Max single <strong>{template.maxSingle}%</strong></span>
+      <span>Top 10 max <strong>{template.maxTop10}%</strong></span>
+      <span>Current drift <strong>{percentFmt.format(drift)} pts</strong></span>
+    </div>
+    <div className="template-pros-cons">
+      <div><strong>Pros</strong>{template.pros.slice(0, 2).map((item) => <span key={item}>{item}</span>)}</div>
+      <div><strong>Cons</strong>{template.cons.slice(0, 2).map((item) => <span key={item}>{item}</span>)}</div>
+    </div>
+  </button>
+}
+
+function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: PortfolioSnapshot; rows: Record<string, unknown>[]; message: string; accountOwner: string; accountType: string; setAccountOwner: (v: string) => void; setAccountType: (v: string) => void; parseUpload: (files: FileList | File) => void; saveImportSnapshot: () => void; setSnapshots: React.Dispatch<React.SetStateAction<PortfolioSnapshot[]>>; setSelectedSnapshotId: (id: string) => void; generateCandidates: () => void }) {
   const latest = props.snapshots.at(-1)
   const previous = props.snapshots.at(-2)
   const comparison = latest && previous ? compareSnapshots(previous, latest) : []
@@ -469,8 +540,8 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
     <Panel title="Upload holdings" action={<button className="primary" onClick={props.generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
       <label className="upload">
         <FileArrowUp size={28} />
-        <span>Drop in a CSV or XLSX brokerage positions file</span>
-        <input type="file" accept=".csv,.xlsx,.xls" onChange={(event) => event.target.files?.[0] && props.parseUpload(event.target.files[0])} />
+        <span>Drop in one or more CSV/XLSX brokerage position files</span>
+        <input type="file" multiple accept=".csv,.xlsx,.xls" onChange={(event) => event.target.files && props.parseUpload(event.target.files)} />
       </label>
       {props.message && <p className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-sm text-emerald-100">{props.message}</p>}
       {props.rows.length > 0 && <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -500,7 +571,7 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
   </section>
 }
 
-function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void }) {
+function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId, hideHolding, hiddenHoldings, unhideHolding }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void; hideHolding: (id: string) => void; hiddenHoldings: Holding[]; unhideHolding: (id: string) => void }) {
   return <section className="grid gap-5">
     <div className="grid gap-5 xl:grid-cols-2">
       <ChartPanel title="Top holdings ranked"><BarList data={analytics.topHoldings.slice(0, 15).map((h) => ({ name: h.ticker, value: weight(h.marketValue, analytics.total) }))} /></ChartPanel>
@@ -516,9 +587,13 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
       <div className="overflow-auto rounded-xl border border-white/10">
         <table className="data-table">
           <thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}</thead>
-          <tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} onClick={() => setSelectedHoldingId(row.original.id)}>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody>
+          <tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} onClick={() => setSelectedHoldingId(row.original.id)}>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}<td><button className="ghost" onClick={(event) => { event.stopPropagation(); hideHolding(row.original.id) }}>Hide</button></td></tr>)}</tbody>
         </table>
       </div>
+      {hiddenHoldings.length > 0 && <div className="mt-4 rounded-xl border border-app bg-soft p-3">
+        <h3 className="section-label">Hidden positions</h3>
+        <div className="flex flex-wrap gap-2">{hiddenHoldings.map((holding) => <button key={holding.id} className="ghost" onClick={() => unhideHolding(holding.id)}>{holding.ticker} · Unhide</button>)}</div>
+      </div>}
     </Panel>
   </section>
 }
@@ -720,7 +795,8 @@ function normalizeImportedRow(row: Record<string, unknown>, accountOwner: string
   const shares = parseMoney(row['Qty (Quantity)'] ?? row.shares ?? row.Quantity) || 0
   const price = parseMoney(row.Price)
   const defaults = defaultClassifications[ticker] ?? {}
-  return { id: `${accountName}-${ticker}-${index}-${crypto.randomUUID()}`, accountOwner, accountName: accountName.replace(/^Positions for account\s*/i, ''), accountType, ticker, securityName: clean(row.Description ?? row.security_name ?? row.Name) || ticker, shares, price, marketValue, assetClass: (defaults.assetClass as AssetClass) ?? assetFromRaw(clean(row['Asset Type'])), sector: defaults.sector ?? 'Unclassified', ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' }, costBasis: parseMoney(row['Cost Basis']), unrealizedGainLoss: parseMoney(row['Gain $ (Gain/Loss $)']) }
+  const normalizedAccountName = accountName.replace(/^Positions for account\s*/i, '')
+  return { id: `${accountName}-${ticker}-${index}-${crypto.randomUUID()}`, accountId: slug(normalizedAccountName), accountOwner, accountName: normalizedAccountName, accountType, accountCategory: detectAccountType(normalizedAccountName), ticker, securityName: clean(row.Description ?? row.security_name ?? row.Name) || ticker, shares, price, marketValue, assetClass: (defaults.assetClass as AssetClass) ?? assetFromRaw(clean(row['Asset Type'])), sector: defaults.sector ?? 'Unclassified', ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' }, costBasis: parseMoney(row['Cost Basis']), unrealizedGainLoss: parseMoney(row['Gain $ (Gain/Loss $)']) }
 }
 function compareSnapshots(a: PortfolioSnapshot, b: PortfolioSnapshot) {
   const mapA = sumBy(a.holdings, (h) => h.ticker)
@@ -765,15 +841,46 @@ function exportCsv(name: string, rows: unknown[]) {
 }
 function exportJson(name: string, data: unknown) { download(name, new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })) }
 function download(name: string, blob: Blob) { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url) }
+function slug(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'unknown-account' }
+function detectAccountType(value: string) {
+  const text = value.toLowerCase()
+  if (text.includes('401k') || text.includes('401(k)')) return '401k'
+  if (text.includes('sep')) return 'SEP IRA'
+  if (text.includes('simple')) return 'SIMPLE IRA'
+  if (text.includes('rollover')) return 'Rollover IRA'
+  if (text.includes('roth')) return 'Roth IRA'
+  if (text.includes('traditional') || /\bira\b/.test(text)) return 'Traditional IRA'
+  if (text.includes('hsa')) return 'HSA'
+  if (text.includes('trust')) return 'Trust'
+  if (text.includes('taxable') || text.includes('brokerage') || text.includes('joint')) return 'Taxable'
+  if (text.includes('db plan') || text.includes('pension')) return 'Defined benefit plan'
+  return 'Unknown account'
+}
+function detectAccountFromText(preamble: string, filename: string) {
+  const stripped = preamble.replaceAll('"', '').trim()
+  const match = stripped.match(/Positions for account\s+(.+?)\s+as of/i)
+  const rawName = match?.[1] ?? filename.replace(/\.(csv|xlsx|xls)$/i, '').replace(/-Positions-.+$/i, '')
+  const name = rawName.replace(/\s*\.\.\.\d+\s*/g, '').trim() || 'Uploaded account'
+  return { id: slug(name), name, type: detectAccountType(name) }
+}
+function accountScopes(holdings: Holding[]) {
+  const accounts = Array.from(new Map(holdings.map((holding) => [holding.accountId, holding])).values())
+  return [{ id: 'combined', label: 'Combined portfolio' }, ...accounts.map((holding) => ({ id: holding.accountId, label: `${holding.accountName} · ${holding.accountCategory || holding.accountType}` }))]
+}
+function resolveTheme(theme: ThemePreference) {
+  if (theme !== 'system') return theme
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
 function loadState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey) || '{}')
-    return { snapshots: parsed.snapshots?.length ? parsed.snapshots : sampleSnapshots(), selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], decisionLog: parsed.decisionLog ?? [] }
+    const snapshots = parsed.snapshots?.length ? parsed.snapshots.map((snapshot: PortfolioSnapshot) => ({ ...snapshot, holdings: snapshot.holdings.map((holding) => ({ ...holding, accountId: holding.accountId ?? slug(holding.accountName), accountCategory: holding.accountCategory ?? detectAccountType(holding.accountName) })) })) : sampleSnapshots()
+    return { snapshots, selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedAccountScope: parsed.selectedAccountScope ?? 'combined', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', themePreference: parsed.themePreference ?? 'system', hiddenHoldingIds: parsed.hiddenHoldingIds ?? [], recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], decisionLog: parsed.decisionLog ?? [] }
   } catch {
-    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedTemplateId: 'diversified-ai-supply-chain', recompCandidates: [], manualActions: [], decisionLog: [] }
+    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedAccountScope: 'combined', selectedTemplateId: 'diversified-ai-supply-chain', themePreference: 'system' as ThemePreference, hiddenHoldingIds: [], recompCandidates: [], manualActions: [], decisionLog: [] }
   }
 }
-function persist(state: { snapshots: PortfolioSnapshot[]; selectedSnapshotId: string; selectedTemplateId: string; recompCandidates: RecompCandidate[]; manualActions: ManualSandboxAction[]; decisionLog: DecisionLogEntry[] }) {
+function persist(state: PersistedState) {
   localStorage.setItem(storageKey, JSON.stringify(state))
 }
 
