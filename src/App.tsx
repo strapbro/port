@@ -449,6 +449,9 @@ function App() {
   const [search, setSearch] = useState('')
   const [grouping, setGrouping] = useState<GroupingState>([])
   const [sorting, setSorting] = useState<SortingState>([])
+  const [assetFilter, setAssetFilter] = useState('All')
+  const [sectorFilter, setSectorFilter] = useState('All')
+  const [aiBucketFilter, setAiBucketFilter] = useState('All')
   const [minDollar, setMinDollar] = useState(1500)
   const [minWeight, setMinWeight] = useState(0.25)
   const [importRows, setImportRows] = useState<Record<string, unknown>[]>([])
@@ -478,6 +481,8 @@ function App() {
   const simulatedAnalytics = useMemo(() => analyze(simulated, template, stress, minDollar, minWeight), [simulated, template, stress, minDollar, minWeight])
   const selectedHolding = scopedHoldings.find((item) => item.id === selectedHoldingId) ?? currentEffectiveHoldings.find((item) => item.id === selectedHoldingId)
   const cumulativeWeightByHoldingId = useMemo(() => cumulativeWeights(analytics.topHoldings, analytics.total), [analytics.topHoldings, analytics.total])
+  const tableHoldings = useMemo(() => filterHoldingsForTable(scopedHoldings, assetFilter, sectorFilter, aiBucketFilter), [aiBucketFilter, assetFilter, scopedHoldings, sectorFilter])
+  const tableFilterOptions = useMemo(() => tableFilters(scopedHoldings), [scopedHoldings])
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolveTheme(themePreference)
@@ -534,7 +539,7 @@ function App() {
     { id: 'warning', header: 'Warning', accessorFn: (row) => warningStatus(row, analytics.total, minDollar, template.maxSingle), cell: ({ getValue }) => String(getValue()) },
   ], [analytics.total, commitHoldingEdit, cumulativeWeightByHoldingId, holdingEditOverlay, ledgerMode, minDollar, template.maxSingle])
   // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({ data: scopedHoldings, columns, state: { globalFilter: search, grouping, sorting }, onGlobalFilterChange: setSearch, onGroupingChange: setGrouping, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(), getGroupedRowModel: getGroupedRowModel(), getSortedRowModel: getSortedRowModel() })
+  const table = useReactTable({ data: tableHoldings, columns, state: { globalFilter: search, grouping, sorting }, onGlobalFilterChange: setSearch, onGroupingChange: setGrouping, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(), getGroupedRowModel: getGroupedRowModel(), getSortedRowModel: getSortedRowModel() })
 
   function generateCandidates() {
     const candidates = buildRecompCandidates(analytics, template)
@@ -665,7 +670,7 @@ function App() {
 
         {activeTab === 'Overview' && <Overview analytics={analytics} template={template} templates={allTemplates} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} stress={stress} setTemplate={setSelectedTemplateId} setStress={setSelectedStressId} generateCandidates={generateCandidates} />}
         {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} setRows={setImportRows} message={importMessage} snapshotDate={importSnapshotDate} setSnapshotDate={setImportSnapshotDate} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
-        {activeTab === 'Concentration & Holdings' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} hideHolding={(holding) => setHiddenHoldingIds((items) => [...new Set([...items, ...(holding.sourceHoldingIds ?? [holding.id])])])} hiddenHoldings={hiddenHoldings} unhideHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} ledgerMode={ledgerMode} setLedgerMode={setLedgerMode} editedCount={editedCount} discardEdits={discardHoldingEdits} saveEditedSnapshot={saveEditedSnapshot} />}
+        {activeTab === 'Concentration & Holdings' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} hideHolding={(holding) => setHiddenHoldingIds((items) => [...new Set([...items, ...(holding.sourceHoldingIds ?? [holding.id])])])} hiddenHoldings={hiddenHoldings} unhideHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} ledgerMode={ledgerMode} setLedgerMode={setLedgerMode} editedCount={editedCount} discardEdits={discardHoldingEdits} saveEditedSnapshot={saveEditedSnapshot} filterOptions={tableFilterOptions} filters={{ asset: assetFilter, sector: sectorFilter, aiBucket: aiBucketFilter }} setFilters={{ asset: setAssetFilter, sector: setSectorFilter, aiBucket: setAiBucketFilter }} />}
         {activeTab === 'AI Buildout' && <AIBuildout analytics={analytics} current={currentSnapshot} selectedHolding={selectedHolding} setSelectedHoldingId={setSelectedHoldingId} updateHolding={updateHolding} />}
         {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={scopedHoldings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
 
@@ -847,7 +852,7 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
   </section>
 }
 
-function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId, hideHolding, hiddenHoldings, unhideHolding, ledgerMode, setLedgerMode, editedCount, discardEdits, saveEditedSnapshot }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void; hideHolding: (holding: Holding) => void; hiddenHoldings: Holding[]; unhideHolding: (id: string) => void; ledgerMode: LedgerMode; setLedgerMode: (mode: LedgerMode) => void; editedCount: number; discardEdits: () => void; saveEditedSnapshot: () => void }) {
+function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId, hideHolding, hiddenHoldings, unhideHolding, ledgerMode, setLedgerMode, editedCount, discardEdits, saveEditedSnapshot, filterOptions, filters, setFilters }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void; hideHolding: (holding: Holding) => void; hiddenHoldings: Holding[]; unhideHolding: (id: string) => void; ledgerMode: LedgerMode; setLedgerMode: (mode: LedgerMode) => void; editedCount: number; discardEdits: () => void; saveEditedSnapshot: () => void; filterOptions: ReturnType<typeof tableFilters>; filters: { asset: string; sector: string; aiBucket: string }; setFilters: { asset: (value: string) => void; sector: (value: string) => void; aiBucket: (value: string) => void } }) {
   return <section className="grid gap-5">
     <div className="grid gap-5 xl:grid-cols-2">
       <ChartPanel title="Top holdings ranked"><BarList data={holdingBarData(analytics.topHoldings.slice(0, 15), analytics.total)} /></ChartPanel>
@@ -869,8 +874,11 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
           <button className="primary" onClick={saveEditedSnapshot} disabled={!editedCount}>Save as edited snapshot</button>
         </div>
       </div>
-      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
+      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_repeat(6,minmax(9rem,auto))]">
         <label className="search"><MagnifyingGlass size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search holdings" /></label>
+        <select className="control" value={filters.asset} onChange={(event) => setFilters.asset(event.target.value)}><option>All</option>{filterOptions.assets.map((asset) => <option key={asset}>{asset}</option>)}</select>
+        <select className="control" value={filters.sector} onChange={(event) => setFilters.sector(event.target.value)}><option>All</option>{filterOptions.sectors.map((sector) => <option key={sector}>{sector}</option>)}</select>
+        <select className="control" value={filters.aiBucket} onChange={(event) => setFilters.aiBucket(event.target.value)}><option>All</option>{filterOptions.aiBuckets.map((bucket) => <option key={bucket}>{bucket}</option>)}</select>
         <select className="control" value={grouping[0] ?? ''} onChange={(event) => setGrouping(event.target.value ? [event.target.value] : [])}><option value="">No grouping</option><option value="accountName">Group account</option><option value="assetClass">Group asset class</option><option value="sector">Group sector</option></select>
         <label className="compact-field">Min $<input type="number" className="control" value={minDollar} onChange={(event) => setMinDollar(Number(event.target.value))} /></label>
         <label className="compact-field">Min %<input type="number" className="control" value={minWeight} onChange={(event) => setMinWeight(Number(event.target.value))} /></label>
@@ -1284,6 +1292,21 @@ function aggregateHoldingsForView(holdings: Holding[]): Holding[] {
       notes: uniqueText(group.map((holding) => holding.notes).filter(Boolean) as string[]).join(' | '),
     }
   }).sort((a, b) => b.marketValue - a.marketValue)
+}
+function tableFilters(holdings: Holding[]) {
+  return {
+    assets: uniqueText(holdings.map((holding) => holding.assetClass)).sort(),
+    sectors: uniqueText(holdings.map((holding) => holding.sector)).sort(),
+    aiBuckets: uniqueText(holdings.map((holding) => holding.ai.buckets[0]?.bucket ?? 'Missing')).sort(),
+  }
+}
+function filterHoldingsForTable(holdings: Holding[], asset: string, sector: string, aiBucket: string) {
+  return holdings.filter((holding) => {
+    if (asset !== 'All' && holding.assetClass !== asset) return false
+    if (sector !== 'All' && holding.sector !== sector) return false
+    if (aiBucket !== 'All' && (holding.ai.buckets[0]?.bucket ?? 'Missing') !== aiBucket) return false
+    return true
+  })
 }
 function aggregateAI(holdings: Holding[]): AIExposureClassification {
   const total = holdings.reduce((sum, holding) => sum + holding.marketValue, 0)
