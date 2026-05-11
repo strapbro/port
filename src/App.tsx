@@ -132,6 +132,7 @@ type RecompCandidate = {
   tickerOrBucket: string
   dollarAmount: number
   estimatedShares?: number
+  priceUsed?: number
   beforeWeight: number
   afterWeight: number
   reason: string
@@ -944,7 +945,7 @@ function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualAc
   const simulatedScenario = scenarioImpactDollars(simulatedAnalytics)
   function addManual(actionType: ActionType) {
     const holding = holdings.find((item) => item.ticker === ticker)
-    setManualActions((items) => [...items, { id: crypto.randomUUID(), actionType, tickerOrBucket: ticker, dollarAmount: amount, estimatedShares: holding?.price ? amount / holding.price : undefined, beforeWeight: holding ? weight(holding.marketValue, analytics.total) : 0, afterWeight: holding ? weight(holding.marketValue + (actionType.includes('Buy') ? amount : -amount), analytics.total) : 0, reason: 'Manual sandbox action.', riskImpact: 'User-defined impact.', alignmentImpact: 'Included in simulated before/after view.', stressImpact: 'Scenario sensitivity recomputes in the simulated portfolio.', note: '', }])
+    setManualActions((items) => [...items, { id: crypto.randomUUID(), actionType, tickerOrBucket: ticker, dollarAmount: amount, estimatedShares: holding?.price ? amount / holding.price : undefined, priceUsed: holding?.price, beforeWeight: holding ? weight(holding.marketValue, analytics.total) : 0, afterWeight: holding ? weight(holding.marketValue + (actionType.includes('Buy') ? amount : -amount), analytics.total) : 0, reason: 'Manual sandbox action.', riskImpact: 'User-defined impact.', alignmentImpact: 'Included in simulated before/after view.', stressImpact: 'Scenario sensitivity recomputes in the simulated portfolio.', note: '', }])
   }
   return <section className="grid gap-5">
     <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
@@ -971,6 +972,7 @@ function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualAc
       </div>
     </Panel>
     <Panel title="Simulated trade candidate table" action={<button className="ghost" onClick={() => exportCsv('simulated-recomp-candidates.csv', allActions)}><DownloadSimple size={16} /> Export CSV</button>}>
+      <p className="mb-3 text-sm leading-6 text-muted">Estimated shares use uploaded CSV prices. These are planning estimates only, not executable orders or advice about order type, timing, or limit price.</p>
       <ActionTable actions={allActions} />
     </Panel>
     <div className="grid gap-5 xl:grid-cols-2">
@@ -1070,7 +1072,7 @@ function ClassificationEditor({ holding, updateHolding }: { holding: Holding; cu
 }
 function ActionTable({ actions }: { actions: RecompCandidate[] }) {
   if (!actions.length) return <div className="empty"><Warning size={28} /><p>No simulated actions yet. Generate auto-recomp candidates or add manual sandbox actions.</p></div>
-  return <div className="overflow-auto rounded-xl border border-white/10"><table className="data-table"><thead><tr><th>Action</th><th>Ticker / bucket</th><th>Amount</th><th>Before</th><th>After</th><th>Reason</th><th>Impact</th></tr></thead><tbody>{actions.map((action) => <tr key={action.id}><td>{action.actionType}</td><td>{action.tickerOrBucket}</td><td>{dollarFmt.format(action.dollarAmount)}</td><td>{percentFmt.format(action.beforeWeight)}%</td><td>{percentFmt.format(action.afterWeight)}%</td><td>{action.reason}</td><td>{action.alignmentImpact}</td></tr>)}</tbody></table></div>
+  return <div className="overflow-auto rounded-xl border border-white/10"><table className="data-table"><thead><tr><th>Action</th><th>Ticker / bucket</th><th>Amount</th><th>Est. shares</th><th>Price used</th><th>Before</th><th>After</th><th>Reason</th><th>Impact</th></tr></thead><tbody>{actions.map((action) => <tr key={action.id}><td>{action.actionType}</td><td>{action.tickerOrBucket}</td><td>{dollarFmt.format(action.dollarAmount)}</td><td>{formatShares(action.estimatedShares)}</td><td>{action.priceUsed ? dollarFmt.format(action.priceUsed) : 'Price missing'}</td><td>{percentFmt.format(action.beforeWeight)}%</td><td>{percentFmt.format(action.afterWeight)}%</td><td>{action.reason}</td><td>{action.alignmentImpact}</td></tr>)}</tbody></table></div>
 }
 
 function analyze(holdings: Holding[], template: StrategyTemplate, stress: StressScenario, minDollar: number, minWeight: number) {
@@ -1142,7 +1144,7 @@ function buildRecompCandidates(analytics: ReturnType<typeof analyze>, template: 
   return actions.slice(0, 12)
 }
 function candidate(actionType: ActionType, tickerOrBucket: string, dollarAmount: number, beforeWeight: number, afterWeight: number, reason: string, price?: number): RecompCandidate {
-  return { id: crypto.randomUUID(), actionType, tickerOrBucket, dollarAmount, estimatedShares: price ? dollarAmount / price : undefined, beforeWeight, afterWeight, reason, riskImpact: 'Estimated risk-budget contribution recalculates in the simulated view.', alignmentImpact: 'Moves closer to selected template guardrails.', stressImpact: 'Scenario sensitivity updates after applying this simulated action.', warning: actionType.includes('Buy') && afterWeight > beforeWeight ? 'Check concentration before acting.' : undefined }
+  return { id: crypto.randomUUID(), actionType, tickerOrBucket, dollarAmount, estimatedShares: price ? dollarAmount / price : undefined, priceUsed: price, beforeWeight, afterWeight, reason, riskImpact: 'Estimated risk-budget contribution recalculates in the simulated view.', alignmentImpact: 'Moves closer to selected template guardrails.', stressImpact: 'Scenario sensitivity updates after applying this simulated action.', warning: actionType.includes('Buy') && afterWeight > beforeWeight ? 'Check concentration before acting.' : undefined }
 }
 function simulateCandidates(holdings: Holding[], actions: RecompCandidate[]) {
   const simulated = holdings.map(cloneHolding)
@@ -1240,6 +1242,10 @@ function compactDollar(value: number) {
   if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
   if (Math.abs(value) >= 1_000) return `$${Math.round(value / 1_000)}K`
   return dollarFmt.format(value)
+}
+function formatShares(value?: number) {
+  if (!Number.isFinite(value)) return '-'
+  return shareFmt.format(value ?? 0)
 }
 function holdingColor(holding: Holding) {
   if (holding.assetClass === 'Cash') return semanticColors.cash
