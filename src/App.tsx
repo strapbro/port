@@ -46,6 +46,7 @@ import type { ColumnDef, GroupingState, SortingState } from '@tanstack/react-tab
 import './index.css'
 
 type AssetClass = 'Broad US equity' | 'AI buildout sleeve' | 'International equity' | 'Bonds/fixed income' | 'Cash' | 'Alternatives/other'
+type SecurityType = 'Individual equity' | 'ETF / closed-end fund' | 'Mutual fund' | 'Bond / fixed income' | 'Cash / money market' | 'Option / warrant / right' | 'Crypto / digital asset' | 'Other'
 type Directness = 'direct' | 'indirect' | 'none'
 type ClassificationSource = 'manual' | 'default' | 'imported' | 'unknown'
 type WarningSeverity = 'high' | 'medium' | 'low'
@@ -98,6 +99,7 @@ type Holding = {
   price?: number
   marketValue: number
   assetClass: AssetClass
+  securityType: SecurityType
   sector: string
   ai: AIExposureClassification
   costBasis?: number
@@ -418,6 +420,7 @@ function holding(accountOwner: string, accountName: string, accountType: string,
     price,
     marketValue: shares * price,
     assetClass: (defaults.assetClass as AssetClass) ?? assetClass,
+    securityType: inferSecurityType(ticker, securityName, assetClass),
     sector: defaults.sector ?? sector,
     ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '', },
     costBasis: shares * price * 0.78,
@@ -530,6 +533,7 @@ function App() {
     { accessorKey: 'marketValue', header: 'Market value', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.marketValue} step={1} onChange={(value) => commitHoldingEdit({ ...row.original, marketValue: value })} /> : dollarFmt.format(row.original.marketValue) },
     { id: 'portfolioWeight', header: 'Portfolio %', accessorFn: (row) => weight(row.marketValue, analytics.total), cell: ({ getValue }) => `${percentFmt.format(Number(getValue()))}%` },
     { id: 'cumulativeWeight', header: 'Cumulative %', accessorFn: (row) => cumulativeWeightByHoldingId.get(row.id) ?? 0, cell: ({ getValue }) => `${percentFmt.format(Number(getValue()))}%` },
+    { accessorKey: 'securityType', header: 'Type' },
     { accessorKey: 'assetClass', header: 'Asset class', cell: ({ row }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.assetClass} options={assetClasses} onChange={(value) => commitHoldingEdit({ ...row.original, assetClass: value as AssetClass })} /> : row.original.assetClass },
     { accessorKey: 'sector', header: 'Sector', cell: ({ row }) => ledgerMode === 'sandbox' ? <TextCell value={row.original.sector} onChange={(value) => commitHoldingEdit({ ...row.original, sector: value })} /> : row.original.sector },
     { id: 'aiBucket', header: 'AI bucket', accessorFn: (row) => row.ai.buckets[0]?.bucket ?? 'Missing', cell: ({ row, getValue }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.ai.buckets[0]?.bucket ?? aiBuckets[0]} options={aiBuckets} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, source: 'manual', buckets: [{ bucket: value as AIBucket, weight: 100 }] } })} /> : String(getValue()) },
@@ -1156,7 +1160,7 @@ function simulateCandidates(holdings: Holding[], actions: RecompCandidate[]) {
 function adjustCash(holdings: Holding[], amount: number) {
   const cash = holdings.find((holding) => holding.assetClass === 'Cash')
   if (!cash) {
-    if (amount > 0) holdings.push({ id: `simulation-cash-${crypto.randomUUID()}`, accountId: 'simulation', accountOwner: 'Portfolio', accountName: 'Simulation cash', accountType: 'Cash', accountCategory: 'Cash', ticker: 'CASH', securityName: 'Simulation cash', shares: amount, price: 1, marketValue: amount, assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none'), notes: 'Created by simulation offset.' })
+    if (amount > 0) holdings.push({ id: `simulation-cash-${crypto.randomUUID()}`, accountId: 'simulation', accountOwner: 'Portfolio', accountName: 'Simulation cash', accountType: 'Cash', accountCategory: 'Cash', ticker: 'CASH', securityName: 'Simulation cash', shares: amount, price: 1, marketValue: amount, assetClass: 'Cash', securityType: 'Cash / money market', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none'), notes: 'Created by simulation offset.' })
     return
   }
   cash.marketValue = Math.max(0, cash.marketValue + amount)
@@ -1171,7 +1175,10 @@ function normalizeImportedRow(row: Record<string, unknown>, accountOwner: string
   const price = parseMoney(row.Price)
   const defaults = defaultClassifications[ticker] ?? {}
   const normalizedAccountName = accountName.replace(/^Positions for account\s*/i, '')
-  return { id: `${accountName}-${ticker}-${index}-${crypto.randomUUID()}`, accountId: slug(normalizedAccountName), accountOwner, accountName: normalizedAccountName, accountType, accountCategory: detectAccountType(normalizedAccountName), ticker, securityName: clean(row.Description ?? row.security_name ?? row.Name) || ticker, shares, price, marketValue, assetClass: (defaults.assetClass as AssetClass) ?? assetFromRaw(clean(row['Asset Type'])), sector: defaults.sector ?? 'Unclassified', ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' }, costBasis: parseMoney(row['Cost Basis']), unrealizedGainLoss: parseMoney(row['Gain $ (Gain/Loss $)']) }
+  const securityName = clean(row.Description ?? row.security_name ?? row.Name) || ticker
+  const rawAssetType = clean(row['Asset Type'])
+  const assetClass = (defaults.assetClass as AssetClass) ?? assetFromRaw(rawAssetType)
+  return { id: `${accountName}-${ticker}-${index}-${crypto.randomUUID()}`, accountId: slug(normalizedAccountName), accountOwner, accountName: normalizedAccountName, accountType, accountCategory: detectAccountType(normalizedAccountName), ticker, securityName, shares, price, marketValue, assetClass, securityType: inferSecurityType(ticker, securityName, assetClass, rawAssetType), sector: defaults.sector ?? 'Unclassified', ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' }, costBasis: parseMoney(row['Cost Basis']), unrealizedGainLoss: parseMoney(row['Gain $ (Gain/Loss $)']) }
 }
 function compareSnapshots(a: PortfolioSnapshot, b: PortfolioSnapshot) {
   const mapA = sumBy(a.holdings, (h) => h.ticker)
@@ -1285,6 +1292,7 @@ function aggregateHoldingsForView(holdings: Holding[]): Holding[] {
       price: shares ? totalValue / shares : dominant.price,
       marketValue: totalValue,
       assetClass: dominantByValue(group, (holding) => holding.assetClass) as AssetClass,
+      securityType: dominantByValue(group, (holding) => holding.securityType) as SecurityType,
       sector: dominantByValue(group, (holding) => holding.sector),
       ai: aggregateAI(group),
       costBasis: group.reduce((sum, holding) => sum + (holding.costBasis ?? 0), 0),
@@ -1385,6 +1393,17 @@ function weight(value: number, total: number) { return total ? (value / total) *
 function parseMoney(value: unknown) { const cleanValue = String(value ?? '').replace(/[$,%"]/g, '').replace(/,/g, '').trim(); const parsed = Number(cleanValue); return Number.isFinite(parsed) ? parsed : 0 }
 function clean(value: unknown) { return String(value ?? '').replaceAll('"', '').trim() }
 function assetFromRaw(raw: string): AssetClass { return raw.toLowerCase().includes('cash') ? 'Cash' : raw.toLowerCase().includes('bond') ? 'Bonds/fixed income' : 'Broad US equity' }
+function inferSecurityType(ticker: string, name: string, assetClass: AssetClass, rawAssetType = ''): SecurityType {
+  const text = `${ticker} ${name} ${rawAssetType}`.toLowerCase()
+  if (assetClass === 'Cash' || text.includes('cash') || text.includes('money market')) return 'Cash / money market'
+  if (assetClass === 'Bonds/fixed income' || text.includes('fixed income') || /\b\d{6}[a-z0-9]{3}\b/i.test(ticker)) return 'Bond / fixed income'
+  if (text.includes('mutual fund')) return 'Mutual fund'
+  if (text.includes('etf') || text.includes('closed end fund') || text.includes('trust etf')) return 'ETF / closed-end fund'
+  if (text.includes('warrant') || text.includes('wts') || text.includes('right') || text.includes('rts')) return 'Option / warrant / right'
+  if (text.includes('bitcoin') || text.includes('ethereum') || text.includes('crypto')) return 'Crypto / digital asset'
+  if (rawAssetType.toLowerCase().includes('equity') || assetClass === 'Broad US equity' || assetClass === 'AI buildout sleeve' || assetClass === 'International equity') return 'Individual equity'
+  return 'Other'
+}
 function stressExplanation(scenario: StressScenario) {
   return `Scenario sensitivity applies this scenario's simple shocks to each holding by AI bucket first, then asset class fallback, and sums the weighted impact. It is a what-if comparison tool, not a forecast, volatility model, or institutional risk system. Current scenario: ${scenario.name}.`
 }
@@ -1482,6 +1501,7 @@ function migrateHolding(holding: Holding): Holding | null {
     accountId: holding.accountId ?? slug(holding.accountName),
     accountCategory: holding.accountCategory ?? detectAccountType(holding.accountName),
     assetClass: (defaults.assetClass as AssetClass | undefined) ?? holding.assetClass,
+    securityType: holding.securityType ?? inferSecurityType(holding.ticker, holding.securityName, (defaults.assetClass as AssetClass | undefined) ?? holding.assetClass),
     sector: (defaults.sector as string | undefined) ?? holding.sector,
     ai: holding.ai?.source === 'manual' ? holding.ai : aiDefault ?? holding.ai ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' },
   }
