@@ -333,6 +333,7 @@ function App() {
   const [minWeight, setMinWeight] = useState(0.25)
   const [importRows, setImportRows] = useState<Record<string, unknown>[]>([])
   const [importName, setImportName] = useState('')
+  const [importSnapshotDate, setImportSnapshotDate] = useState('')
   const [importAccountOwner, setImportAccountOwner] = useState('Portfolio')
   const [importAccountType, setImportAccountType] = useState('Tax-advantaged')
   const [importMessage, setImportMessage] = useState('')
@@ -406,12 +407,14 @@ function App() {
         const accountLine = lines.find((line) => line.includes('Positions for account'))
         sourceName = accountLine?.replaceAll('"', '').trim() || file.name
         detected = detectAccountFromText(sourceName, file.name)
+        const asOf = detectAsOfDate(sourceName)
         const headerIndex = lines.findIndex((line) => line.includes('Symbol') && line.includes('Description'))
         const parseText = headerIndex >= 0 ? lines.slice(headerIndex).join('\n') : text
         const parsed = Papa.parse<Record<string, unknown>>(parseText, { header: true, skipEmptyLines: true })
         rows = parsed.data
+        if (asOf && !importSnapshotDate) setImportSnapshotDate(asOf)
       }
-      rows.filter((row) => row.Symbol || row.ticker || row.Ticker).forEach((row) => stagedRows.push({ ...row, __accountName: detected.name, __accountType: detected.type, __accountId: detected.id, __source: sourceName }))
+      rows.filter((row) => row.Symbol || row.ticker || row.Ticker).forEach((row) => stagedRows.push({ ...row, __accountName: detected.name, __accountType: detected.type, __accountId: detected.id, __source: sourceName, __asOfDate: detectAsOfDate(sourceName) }))
     }
     setImportRows(stagedRows)
     setImportName(fileList.length > 1 ? `Combined ${fileList.length}-account upload` : String(stagedRows[0]?.__source ?? fileList[0]?.name ?? 'Uploaded file'))
@@ -425,10 +428,12 @@ function App() {
       setImportMessage('No usable holdings found. Confirm the file includes ticker and market value columns.')
       return
     }
-    const snapshot: PortfolioSnapshot = { id: crypto.randomUUID(), name: `${importName || 'Uploaded portfolio'} snapshot`, date: new Date().toISOString(), source: importName || 'Uploaded file', holdings }
+    const snapshotDate = importSnapshotDate ? new Date(importSnapshotDate).toISOString() : new Date().toISOString()
+    const snapshot: PortfolioSnapshot = { id: crypto.randomUUID(), name: `${importName || 'Uploaded portfolio'} snapshot`, date: snapshotDate, source: importName || 'Uploaded file', holdings }
     setSnapshots((items) => [...items, snapshot])
     setSelectedSnapshotId(snapshot.id)
     setImportRows([])
+    setImportSnapshotDate('')
     setImportMessage(`Saved ${holdings.length} holdings as a dated snapshot.`)
   }
 
@@ -457,6 +462,7 @@ function App() {
               <label className="field"><span>Account scope</span><select className="control" value={selectedAccountScope} onChange={(event) => setSelectedAccountScope(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>
               <label className="field"><span>Theme</span><select className="control" value={themePreference} onChange={(event) => setThemePreference(event.target.value as ThemePreference)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
             </div>
+            <p className="mt-3 text-xs text-muted">As of {new Date(currentSnapshot.date).toLocaleDateString()}</p>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <Metric label="Value" value={dollarFmt.format(analytics.total)} />
               <Metric label="AI exposure" value={`${percentFmt.format(analytics.aiExposure)}%`} />
@@ -473,7 +479,7 @@ function App() {
         </nav>
 
         {activeTab === 'Overview' && <Overview analytics={analytics} template={template} templates={allTemplates} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} stress={stress} setTemplate={setSelectedTemplateId} setStress={setSelectedStressId} generateCandidates={generateCandidates} />}
-        {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} setRows={setImportRows} message={importMessage} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
+        {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} setRows={setImportRows} message={importMessage} snapshotDate={importSnapshotDate} setSnapshotDate={setImportSnapshotDate} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
         {activeTab === 'X-Ray & Concentration' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} hideHolding={(id) => setHiddenHoldingIds((items) => [...new Set([...items, id])])} hiddenHoldings={hiddenHoldings} unhideHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} />}
         {activeTab === 'AI Buildout' && <AIBuildout analytics={analytics} current={currentSnapshot} selectedHolding={selectedHolding} setSelectedHoldingId={setSelectedHoldingId} updateHolding={updateHolding} />}
         {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={currentSnapshot.holdings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
@@ -497,12 +503,13 @@ function Overview({ analytics, template, templates, customTemplates, setCustomTe
       <MetricCard icon={<Database size={20} />} label="Total portfolio value" value={dollarFmt.format(analytics.total)} />
       <MetricCard icon={<StackSimple size={20} />} label="Holdings" value={String(analytics.holdings.length)} />
       <MetricCard icon={<Sparkle size={20} />} label="AI buildout exposure" value={`${percentFmt.format(analytics.aiExposure)}%`} />
-      <MetricCard icon={<Funnel size={20} />} label="Largest holding" value={`${percentFmt.format(analytics.largestWeight)}%`} />
-      <MetricCard icon={<Pulse size={20} />} label="Risk-budget score" value={analytics.riskScore.toFixed(2)} />
+      <MetricCard icon={<Funnel size={20} />} label={`Largest holding · ${analytics.topHoldings[0]?.ticker ?? 'N/A'}`} value={`${percentFmt.format(analytics.largestWeight)}%`} />
+      <MetricCard icon={<Pulse size={20} />} label="Risk-budget estimate" value={analytics.riskScore.toFixed(2)} />
     </div>
     <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
       <Panel title="Current read" action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
         <p className="text-balance text-lg leading-8 text-app">{executiveSummary(analytics, template)}</p>
+        <p className="mt-3 text-sm leading-6 text-muted">Risk-budget estimate is a rough weighted exposure score: cash counts near 0, bonds count lower, broad equity counts around 1, and higher-beta AI buckets count more. It is useful for comparing before/after simulations, not for predicting actual volatility.</p>
         <div className="mt-5 rounded-xl border border-app bg-soft p-3">
           <label className="field"><span>Stress scenario</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <p className="mt-3 text-sm leading-6 text-muted">{stressExplanation(stress)}</p>
@@ -584,7 +591,7 @@ function TemplateCard({ template, analytics, selected, onSelect }: { template: S
   </button>
 }
 
-function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: PortfolioSnapshot; rows: Record<string, unknown>[]; setRows: React.Dispatch<React.SetStateAction<Record<string, unknown>[]>>; message: string; accountOwner: string; accountType: string; setAccountOwner: (v: string) => void; setAccountType: (v: string) => void; parseUpload: (files: FileList | File) => void; saveImportSnapshot: () => void; setSnapshots: React.Dispatch<React.SetStateAction<PortfolioSnapshot[]>>; setSelectedSnapshotId: (id: string) => void; generateCandidates: () => void }) {
+function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: PortfolioSnapshot; rows: Record<string, unknown>[]; setRows: React.Dispatch<React.SetStateAction<Record<string, unknown>[]>>; message: string; snapshotDate: string; setSnapshotDate: (value: string) => void; accountOwner: string; accountType: string; setAccountOwner: (v: string) => void; setAccountType: (v: string) => void; parseUpload: (files: FileList | File) => void; saveImportSnapshot: () => void; setSnapshots: React.Dispatch<React.SetStateAction<PortfolioSnapshot[]>>; setSelectedSnapshotId: (id: string) => void; generateCandidates: () => void }) {
   const latest = props.snapshots.at(-1)
   const previous = props.snapshots.at(-2)
   const comparison = latest && previous ? compareSnapshots(previous, latest) : []
@@ -600,6 +607,7 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
       {props.rows.length > 0 && <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="field"><span>Account owner</span><input className="control" value={props.accountOwner} onChange={(event) => props.setAccountOwner(event.target.value)} /></label>
         <label className="field"><span>Account type</span><input className="control" value={props.accountType} onChange={(event) => props.setAccountType(event.target.value)} /></label>
+        <label className="field md:col-span-2"><span>Snapshot as-of date</span><input className="control" type="date" value={props.snapshotDate} onChange={(event) => props.setSnapshotDate(event.target.value)} /></label>
         <div className="staged-account-list md:col-span-2">
           {stagedAccounts.map((account) => <div key={account.id} className="staged-account">
             <div><strong>{account.name}</strong><span>{account.type} · {account.rows} rows · {dollarFmt.format(account.value)}</span></div>
@@ -663,7 +671,7 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
 function AIBuildout({ analytics, current, selectedHolding, setSelectedHoldingId, updateHolding }: { analytics: ReturnType<typeof analyze>; current: PortfolioSnapshot; selectedHolding?: Holding; setSelectedHoldingId: (id: string | null) => void; updateHolding: (holding: Holding) => void }) {
   return <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
     <div className="grid gap-5">
-      <ChartPanel title="AI exposure by bucket"><BarList data={analytics.aiBucketData} /></ChartPanel>
+      <ChartPanel title="AI exposure by bucket"><BarList data={compactChartData(analytics.aiBucketData, 8)} /></ChartPanel>
       <ChartPanel title="Direct vs indirect AI exposure"><Donut data={analytics.directnessData} /></ChartPanel>
       <Panel title="Top AI exposure contributors">
         <div className="space-y-2">
@@ -735,7 +743,7 @@ function Donut({ data }: { data: { name: string; value: number }[] }) {
   return <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96} paddingAngle={2}>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} stroke="var(--app-bg)" />)}</Pie><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /></PieChart></ResponsiveContainer>
 }
 function BarList({ data }: { data: { name: string; value: number }[] }) {
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 16, right: 20 }}><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis type="category" dataKey="name" width={150} stroke={chartAxis} tick={{ fontSize: 12 }} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Bar dataKey="value" fill="var(--accent)" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 8, right: 20 }}><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis type="category" dataKey="name" width={132} stroke={chartAxis} tick={{ fontSize: 11 }} tickFormatter={shortChartLabel} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} labelFormatter={(label) => String(label)} contentStyle={chartTooltip} /><Bar dataKey="value" fill="var(--accent)" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
 }
 function TargetBars({ analytics, template }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate }) {
   const data = assetClasses.map((asset) => ({ name: asset, current: weight(analytics.assetTotals[asset] ?? 0, analytics.total), target: template.targets[asset] }))
@@ -786,7 +794,7 @@ function analyze(holdings: Holding[], template: StrategyTemplate, stress: Stress
   const top10Weight = weight(topHoldings.slice(0, 10).reduce((sum, h) => sum + h.marketValue, 0), total)
   const largestWeight = weight(topHoldings[0]?.marketValue ?? 0, total)
   const riskScore = holdings.reduce((sum, h) => sum + weight(h.marketValue, total) / 100 * riskMultiplier(h), 0)
-  const stressImpact = holdings.reduce((sum, h) => sum + weight(h.marketValue, total) / 100 * shockFor(h, stress), 0) * 100
+  const stressImpact = holdings.reduce((sum, h) => sum + weight(h.marketValue, total) / 100 * shockFor(h, stress), 0)
   const assetClassData = toPercentData(assetTotals, total)
   const sectorData = toPercentData(sectorTotals, total)
   const aiBucketData = toPercentData(aiBucketTotals, aiValue || total)
@@ -877,6 +885,23 @@ function sumBy(holdings: Holding[], key: (h: Holding) => string): Record<string,
 function toPercentData(totals: Record<string, number>, total: number) {
   return Object.entries(totals).map(([name, value]) => ({ name, value: weight(value, total) })).sort((a, b) => b.value - a.value)
 }
+function compactChartData(data: { name: string; value: number }[], limit: number) {
+  if (data.length <= limit) return data
+  const head = data.slice(0, limit - 1)
+  const other = data.slice(limit - 1).reduce((sum, item) => sum + item.value, 0)
+  return [...head, { name: 'Other AI buckets', value: other }]
+}
+function shortChartLabel(value: string) {
+  return value
+    .replace('Big tech / hyperscalers', 'Big tech')
+    .replace('AI platforms / AI software', 'AI software')
+    .replace('Broad passive index exposure', 'Broad index')
+    .replace('Public indirect AI lab exposure', 'AI lab indirect')
+    .replace('Data centers / colocation', 'Data centers')
+    .replace('Cooling / thermal management', 'Cooling')
+    .replace('Semiconductor equipment', 'Semi equip.')
+    .replace('Grid / electrification', 'Grid')
+}
 function weight(value: number, total: number) { return total ? (value / total) * 100 : 0 }
 function parseMoney(value: unknown) { const cleanValue = String(value ?? '').replace(/[$,%"]/g, '').replace(/,/g, '').trim(); const parsed = Number(cleanValue); return Number.isFinite(parsed) ? parsed : 0 }
 function clean(value: unknown) { return String(value ?? '').replaceAll('"', '').trim() }
@@ -946,6 +971,11 @@ function detectAccountFromText(preamble: string, filename: string) {
   const rawName = match?.[1] ?? filename.replace(/\.(csv|xlsx|xls)$/i, '').replace(/-Positions-.+$/i, '')
   const name = rawName.replace(/\s*\.\.\.\d+\s*/g, '').trim() || 'Uploaded account'
   return { id: slug(name), name, type: detectAccountType(name) }
+}
+function detectAsOfDate(preamble: string) {
+  const match = preamble.match(/as of .*?,\s*(\d{4})\/(\d{2})\/(\d{2})/i)
+  if (!match) return ''
+  return `${match[1]}-${match[2]}-${match[3]}`
 }
 function accountScopes(holdings: Holding[]) {
   const accounts = Array.from(new Map(holdings.map((holding) => [holding.accountId, holding])).values())

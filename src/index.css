@@ -46,15 +46,11 @@
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    radial-gradient(circle at 20% -10%, rgba(52, 211, 153, 0.12), transparent 34rem),
-    linear-gradient(135deg, #09090b 0%, #18181b 46%, #0c0f0e 100%);
+  background: var(--app-bg);
 }
 
 :root[data-theme="light"] body {
-  background:
-    radial-gradient(circle at 20% -10%, rgba(5, 150, 105, 0.12), transparent 34rem),
-    linear-gradient(135deg, #f7f7f4 0%, #eef0ec 46%, #fafaf8 100%);
+  background: var(--app-bg);
 }
 
 .bg-app { background: var(--app-bg); }
@@ -126,13 +122,13 @@ button:active {
   align-items: center;
   min-height: 88px;
   border-top: 1px solid rgba(255,255,255,.1);
-  background: linear-gradient(180deg, rgba(39,39,42,.76), rgba(24,24,27,.42));
+  background: var(--panel-bg);
   border-radius: 16px;
   padding: 1rem;
 }
 
 :root[data-theme="light"] .metric-card {
-  background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(236,238,234,.62));
+  background: var(--panel-bg);
   border-top-color: rgba(24,24,27,.11);
 }
 
@@ -235,9 +231,9 @@ button:active {
   display: flex;
   align-items: center;
   gap: .55rem;
-  border: 1px solid rgba(255,255,255,.1);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: rgba(9,9,11,.72);
+  background: var(--input-bg);
   color: var(--muted-text);
   padding: 0 .75rem;
 }
@@ -340,9 +336,15 @@ button:active {
   border: 1px dashed rgba(52,211,153,.34);
   border-radius: 18px;
   background: rgba(52,211,153,.06);
-  color: #d1fae5;
+  color: #a7f3d0;
   text-align: center;
   cursor: pointer;
+}
+
+:root[data-theme="light"] .upload {
+  border-color: rgba(4,120,87,.36);
+  background: rgba(236,253,245,.78);
+  color: #047857;
 }
 
 .upload input {
