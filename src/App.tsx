@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import {
@@ -24,6 +24,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Legend,
   Pie,
   PieChart,
@@ -49,6 +50,8 @@ type Directness = 'direct' | 'indirect' | 'none'
 type ClassificationSource = 'manual' | 'default' | 'imported' | 'unknown'
 type WarningSeverity = 'high' | 'medium' | 'low'
 type ActionType = 'Trim to target %' | 'Sell dollar amount' | 'Buy dollar amount' | 'Allocate cash to bucket'
+type ThemePreference = 'system' | 'dark' | 'light'
+type LedgerMode = 'uploaded' | 'sandbox'
 
 type AIBucket =
   | 'Big tech / hyperscalers'
@@ -83,9 +86,12 @@ type AIExposureClassification = {
 }
 type Holding = {
   id: string
+  sourceHoldingIds?: string[]
+  accountId: string
   accountOwner: string
   accountName: string
   accountType: string
+  accountCategory: string
   ticker: string
   securityName: string
   shares: number
@@ -146,6 +152,20 @@ type DecisionLogEntry = {
   warnings: AppWarning[]
   notes: string
 }
+type PersistedState = {
+  snapshots: PortfolioSnapshot[]
+  selectedSnapshotId: string
+  selectedAccountScope: string
+  selectedTemplateId: string
+  customTemplates: StrategyTemplate[]
+  themePreference: ThemePreference
+  ledgerMode: LedgerMode
+  holdingEditOverlay: Record<string, Partial<Holding>>
+  hiddenHoldingIds: string[]
+  recompCandidates: RecompCandidate[]
+  manualActions: ManualSandboxAction[]
+  decisionLog: DecisionLogEntry[]
+}
 const assetClasses: AssetClass[] = ['Broad US equity', 'AI buildout sleeve', 'International equity', 'Bonds/fixed income', 'Cash', 'Alternatives/other']
 const aiBuckets: AIBucket[] = [
   'Big tech / hyperscalers',
@@ -169,7 +189,33 @@ const aiBuckets: AIBucket[] = [
   'Robotics / automation',
   'Broad passive index exposure',
 ]
-const colors = ['#34d399', '#60a5fa', '#a7f3d0', '#fbbf24', '#d1d5db', '#94a3b8', '#f87171', '#22d3ee']
+const colors = ['#047857', '#2563eb', '#b45309', '#6b7280', '#0f766e', '#be123c', '#475569']
+const semanticColors = {
+  ai: '#047857',
+  index: '#2563eb',
+  cash: '#b45309',
+  bonds: '#6b7280',
+  international: '#0f766e',
+  alternatives: '#be123c',
+  equity: '#64748b',
+  other: '#475569',
+}
+const assetClassColors: Record<AssetClass, string> = {
+  'Broad US equity': semanticColors.index,
+  'AI buildout sleeve': semanticColors.ai,
+  'International equity': semanticColors.international,
+  'Bonds/fixed income': semanticColors.bonds,
+  Cash: semanticColors.cash,
+  'Alternatives/other': semanticColors.alternatives,
+}
+const chartAxis = 'var(--chart-axis)'
+const chartGrid = 'var(--chart-grid)'
+const chartTooltip = {
+  background: 'var(--tooltip-bg)',
+  border: '1px solid var(--border)',
+  color: 'var(--app-text)',
+  borderRadius: 12,
+}
 const defaultClassifications: Record<string, Partial<Holding>> = {
   AAPL: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('AI platforms / AI software', 4, 'direct') },
   MSFT: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Big tech / hyperscalers', 5, 'direct', [{ bucket: 'Public indirect AI lab exposure', weight: 25 }]) },
@@ -188,25 +234,120 @@ const defaultClassifications: Record<string, Partial<Holding>> = {
   PLD: { assetClass: 'Alternatives/other', sector: 'Real Estate', ai: ai('Data centers / colocation', 1, 'indirect') },
   PANW: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Cybersecurity', 3, 'direct') },
   CRWD: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Cybersecurity', 3, 'direct') },
+  ALAB: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Networking', 4.5, 'direct', [{ bucket: 'Data centers / colocation', weight: 20 }], 'Connectivity silicon for AI/cloud infrastructure.') },
+  AMSC: { assetClass: 'AI buildout sleeve', sector: 'Industrials', ai: ai('Grid / electrification', 3, 'indirect', [], 'Grid and power infrastructure beneficiary.') },
+  FLNC: { assetClass: 'AI buildout sleeve', sector: 'Industrials', ai: ai('Grid / electrification', 3, 'indirect', [{ bucket: 'Power generation', weight: 20 }], 'Energy storage/grid reliability exposure.') },
+  GEV: { assetClass: 'AI buildout sleeve', sector: 'Industrials', ai: ai('Power generation', 3, 'indirect', [{ bucket: 'Grid / electrification', weight: 35 }]) },
+  NBIS: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Data centers / colocation', 4.5, 'direct', [{ bucket: 'GPUs / accelerators', weight: 30 }], 'AI cloud and GPU infrastructure exposure.') },
+  ORCL: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Big tech / hyperscalers', 4, 'direct', [{ bucket: 'Enterprise software', weight: 25 }]) },
+  PLTR: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('AI platforms / AI software', 4, 'direct', [{ bucket: 'Enterprise software', weight: 30 }]) },
+  META: { assetClass: 'AI buildout sleeve', sector: 'Communication Services', ai: ai('Big tech / hyperscalers', 4, 'direct') },
+  TSLA: { assetClass: 'AI buildout sleeve', sector: 'Consumer Discretionary', ai: ai('Robotics / automation', 3, 'indirect', [{ bucket: 'AI platforms / AI software', weight: 25 }]) },
+  TEM: { assetClass: 'AI buildout sleeve', sector: 'Health Care', ai: ai('AI platforms / AI software', 3, 'direct') },
+  SOUN: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('AI platforms / AI software', 3, 'direct') },
+  IQEPF: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Photonics / optical / interconnect', 4, 'direct', [{ bucket: 'Semiconductors', weight: 30 }], 'Compound semiconductor wafer and photonics supply-chain exposure.') },
+  SIVEF: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Photonics / optical / interconnect', 4, 'direct', [{ bucket: 'Semiconductors', weight: 30 }], 'Photonics/wireless semiconductor supply-chain exposure.') },
+  LPKFF: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Semiconductor equipment', 3, 'indirect', [{ bucket: 'Photonics / optical / interconnect', weight: 25 }]) },
+  POET: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Photonics / optical / interconnect', 4, 'direct', [{ bucket: 'Data centers / colocation', weight: 25 }]) },
+  LASR: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Photonics / optical / interconnect', 3, 'direct') },
+  NVEC: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Memory / storage', 2, 'indirect') },
+  NOK: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Networking', 2.5, 'indirect') },
+  JBL: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Data centers / colocation', 2.5, 'indirect', [{ bucket: 'Networking', weight: 25 }]) },
+  PH: { assetClass: 'AI buildout sleeve', sector: 'Industrials', ai: ai('Cooling / thermal management', 2.5, 'indirect') },
+  WCC: { assetClass: 'AI buildout sleeve', sector: 'Industrials', ai: ai('Grid / electrification', 2.5, 'indirect', [{ bucket: 'Data centers / colocation', weight: 25 }]) },
+  MP: { assetClass: 'AI buildout sleeve', sector: 'Materials', ai: ai('Materials / specialty chemicals', 2.5, 'indirect') },
+  ARAFF: { assetClass: 'AI buildout sleeve', sector: 'Materials', ai: ai('Materials / specialty chemicals', 2, 'indirect') },
+  SOLS: { assetClass: 'AI buildout sleeve', sector: 'Materials', ai: ai('Materials / specialty chemicals', 2, 'indirect') },
+  DRAM: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Memory / storage', 4, 'indirect', [{ bucket: 'Semiconductors', weight: 30 }]) },
+  NVDL: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('GPUs / accelerators', 5, 'indirect', [{ bucket: 'Semiconductors', weight: 40 }]) },
+  NVDY: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('GPUs / accelerators', 4, 'indirect', [{ bucket: 'Semiconductors', weight: 35 }]) },
+  PLTY: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('AI platforms / AI software', 3, 'indirect') },
+  QQQ: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1.5, 'indirect') },
+  SPY: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
+  DIA: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
+  RSP: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.8, 'indirect') },
+  VUG: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1.5, 'indirect') },
+  JEPQ: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1.5, 'indirect') },
+  GPIQ: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1.5, 'indirect') },
+  QQQI: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1.5, 'indirect') },
+  QYLD: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1.5, 'indirect') },
+  XYLD: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
+  NOBL: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
+  VYM: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
+  VHYAX: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 0.5, 'indirect') },
+  XLU: { assetClass: 'AI buildout sleeve', sector: 'Utilities', ai: ai('Power generation', 1.5, 'indirect', [{ bucket: 'Grid / electrification', weight: 35 }]) },
+  URA: { assetClass: 'AI buildout sleeve', sector: 'Utilities', ai: ai('Power generation', 2, 'indirect') },
+  COPX: { assetClass: 'AI buildout sleeve', sector: 'Materials', ai: ai('Grid / electrification', 1.5, 'indirect', [{ bucket: 'Materials / specialty chemicals', weight: 35 }]) },
+  ICOP: { assetClass: 'AI buildout sleeve', sector: 'Materials', ai: ai('Grid / electrification', 1.5, 'indirect', [{ bucket: 'Materials / specialty chemicals', weight: 35 }]) },
+  XLE: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
+  ETHA: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
+  IBIT: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
+  IREN: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Data centers / colocation', 1.5, 'indirect') },
+  DGXX: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Data centers / colocation', 1, 'indirect') },
+  BMNR: { assetClass: 'Alternatives/other', sector: 'Digital assets', ai: ai('Broad passive index exposure', 0, 'none') },
+  AZO: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
+  COST: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  WMT: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  KO: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  HSY: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  KHC: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  MO: { assetClass: 'Broad US equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  BTI: { assetClass: 'International equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  BUD: { assetClass: 'International equity', sector: 'Consumer Staples', ai: ai('Broad passive index exposure', 0, 'none') },
+  JPM: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  AB: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  BEN: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  IVZ: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  HOOD: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  SOFI: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  MA: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  V: { assetClass: 'Broad US equity', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  AGNC: { assetClass: 'Alternatives/other', sector: 'Real Estate', ai: ai('Broad passive index exposure', 0, 'none') },
+  O: { assetClass: 'Alternatives/other', sector: 'Real Estate', ai: ai('Data centers / colocation', 0.5, 'indirect') },
+  MITT: { assetClass: 'Alternatives/other', sector: 'Real Estate', ai: ai('Broad passive index exposure', 0, 'none') },
+  SAR: { assetClass: 'Alternatives/other', sector: 'Financials', ai: ai('Broad passive index exposure', 0, 'none') },
+  CVX: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
+  APA: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
+  EPD: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
+  ET: { assetClass: 'Alternatives/other', sector: 'Energy', ai: ai('Power generation', 0.5, 'indirect') },
+  BHP: { assetClass: 'International equity', sector: 'Materials', ai: ai('Materials / specialty chemicals', 1, 'indirect') },
+  CRS: { assetClass: 'Broad US equity', sector: 'Materials', ai: ai('Materials / specialty chemicals', 1, 'indirect') },
+  CAT: { assetClass: 'Broad US equity', sector: 'Industrials', ai: ai('Grid / electrification', 1, 'indirect') },
+  DE: { assetClass: 'Broad US equity', sector: 'Industrials', ai: ai('Robotics / automation', 1, 'indirect') },
+  GD: { assetClass: 'Broad US equity', sector: 'Industrials', ai: ai('Broad passive index exposure', 0, 'none') },
+  LMT: { assetClass: 'Broad US equity', sector: 'Industrials', ai: ai('Broad passive index exposure', 0, 'none') },
+  MMM: { assetClass: 'Broad US equity', sector: 'Industrials', ai: ai('Broad passive index exposure', 0, 'none') },
+  F: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Robotics / automation', 0.5, 'indirect') },
+  GM: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Robotics / automation', 0.5, 'indirect') },
+  CVNA: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Broad passive index exposure', 0, 'none') },
+  EBAY: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Enterprise software', 0.5, 'indirect') },
+  MELI: { assetClass: 'International equity', sector: 'Consumer Discretionary', ai: ai('Enterprise software', 0.5, 'indirect') },
+  NFLX: { assetClass: 'Broad US equity', sector: 'Communication Services', ai: ai('AI platforms / AI software', 1, 'indirect') },
+  LLY: { assetClass: 'Broad US equity', sector: 'Health Care', ai: ai('AI platforms / AI software', 0.5, 'indirect') },
+  CLOV: { assetClass: 'Broad US equity', sector: 'Health Care', ai: ai('Enterprise software', 0.5, 'indirect') },
+  RKLB: { assetClass: 'Broad US equity', sector: 'Industrials', ai: ai('Robotics / automation', 1, 'indirect') },
+  QS: { assetClass: 'Broad US equity', sector: 'Consumer Discretionary', ai: ai('Grid / electrification', 1, 'indirect') },
   VTI: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
   VOO: { assetClass: 'Broad US equity', sector: 'Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
   VXUS: { assetClass: 'International equity', sector: 'International Broad Market', ai: ai('Broad passive index exposure', 1, 'indirect') },
   BND: { assetClass: 'Bonds/fixed income', sector: 'Fixed Income', ai: ai('Broad passive index exposure', 0, 'none') },
   SGOV: { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
   SPAXX: { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
+  SNVXX: { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
+  'Cash & Cash Investments': { assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none') },
 }
 
-function ai(bucket: AIBucket, score: number, directness: Directness, extra: BucketExposure[] = []): AIExposureClassification {
+function ai(bucket: AIBucket, score: number, directness: Directness, extra: BucketExposure[] = [], notes = ''): AIExposureClassification {
   const primaryWeight = Math.max(0, 100 - extra.reduce((sum, item) => sum + item.weight, 0))
-  return { score, directness, confidence: 'medium', source: 'default', notes: '', buckets: [{ bucket, weight: primaryWeight }, ...extra] }
+  return { score, directness, confidence: 'medium', source: 'default', notes, buckets: [{ bucket, weight: primaryWeight }, ...extra] }
 }
 
 const strategyTemplates: StrategyTemplate[] = [
-  template('balanced-ai-growth', 'Balanced AI Growth', 'Meaningful AI upside while keeping a healthier diversified structure.', [40, 25, 10, 15, 5, 5], [20, 30], 7, 45, 35, 'Moderate growth', '-18% to -30%', 7, 5, ['Strong AI participation', 'Better diversified than a pure tech bet', 'Bonds and cash ballast'], ['Can still draw down in a tech bear market', 'May trail a pure AI rally'], 'A growth-oriented family portfolio that wants AI buildout exposure without going fully aggressive.', 'Watch single-name concentration'),
-  template('aggressive-ai-infrastructure', 'Aggressive AI Infrastructure', 'Maximize participation in the AI infrastructure buildout while keeping basic guardrails.', [30, 40, 5, 10, 5, 10], [35, 45], 10, 60, 40, 'High growth', '-25% to -42%', 9, 7, ['Highest AI upside participation', 'Strong exposure across compute, chips, power, data centers, and infrastructure'], ['Higher volatility', 'More vulnerable to AI capex disappointment'], 'An intentionally aggressive AI infrastructure bet.', 'Higher volatility'),
-  template('ai-barbell', 'AI Barbell', 'Pair aggressive AI upside with defensive ballast.', [25, 35, 5, 20, 10, 5], [30, 40], 8, 50, 35, 'Barbell growth', '-20% to -36%', 8, 6, ['Meaningful AI upside', 'More cash and bond protection', 'Dry powder after drawdowns'], ['Cash and bonds may drag in bull markets', 'Still exposed to AI theme volatility'], 'Someone bullish on AI but uncomfortable with full high-beta exposure.', 'Barbell volatility'),
+  template('balanced-ai-growth', 'Balanced AI 25', 'Balanced growth profile with a 25% AI buildout sleeve and normal ballast.', [40, 25, 10, 15, 5, 5], [20, 30], 7, 45, 35, 'Moderate growth', '-18% to -30%', 7, 5, ['Clear AI participation', 'Diversified core remains intact', 'Keeps bonds and cash in the mix'], ['Still exposed to tech drawdowns', 'May trail a concentrated AI rally'], 'A growth portfolio that wants AI exposure without becoming a pure tech bet.', 'Watch single-name concentration'),
+  template('aggressive-ai-infrastructure', 'Aggressive AI 40', 'High-conviction profile with a 40% AI infrastructure sleeve and wider guardrails.', [30, 40, 5, 10, 5, 10], [35, 45], 10, 60, 40, 'High growth', '-25% to -42%', 9, 7, ['Highest AI participation', 'Broad compute, power, and data center exposure'], ['Higher volatility', 'Sensitive to AI capex disappointment'], 'An intentionally aggressive AI infrastructure bet.', 'Higher volatility'),
+  template('ai-barbell', 'Barbell AI 35', 'Pairs a 35% AI sleeve with larger cash and bond ballast.', [25, 35, 5, 20, 10, 5], [30, 40], 8, 50, 35, 'Barbell growth', '-20% to -36%', 8, 6, ['Meaningful AI upside', 'More defensive ballast', 'Keeps dry powder available'], ['Cash and bonds can drag', 'Still carries AI theme volatility'], 'Bullish on AI, but uncomfortable with full high-beta exposure.', 'Barbell volatility'),
   {
-    ...template('diversified-ai-supply-chain', 'Diversified AI Supply Chain', 'Spread AI exposure across the full buildout chain, not only mega-cap tech and chips.', [35, 30, 10, 15, 5, 5], [25, 35], 7, 50, 30, 'Diversified growth', '-20% to -34%', 8, 7, ['Best fit for the broad AI infrastructure thesis', 'Captures second-order beneficiaries', 'Avoids relying only on mega-cap tech or chips'], ['More complex', 'Some infrastructure names may not move like classic AI stocks'], 'A portfolio built around the whole AI supply chain.', 'Balance the AI sleeve'),
+    ...template('diversified-ai-supply-chain', 'Supply Chain AI 30', '30% AI sleeve spread across chips, power, data centers, cooling, networking, and software.', [35, 30, 10, 15, 5, 5], [25, 35], 7, 50, 30, 'Diversified growth', '-20% to -34%', 8, 7, ['Best match for broad AI infrastructure', 'Reduces mega-cap/chip dependence', 'Includes second-order beneficiaries'], ['More moving parts', 'May lag a chip-led rally'], 'A portfolio built around the whole AI supply chain.', 'Balance the AI sleeve'),
     aiInternalSplit: {
       'Big tech / hyperscalers': 20,
       'Semiconductors': 25,
@@ -220,7 +361,7 @@ const strategyTemplates: StrategyTemplate[] = [
       Cybersecurity: 5,
     },
   },
-  template('conservative-ai-participation', 'Conservative AI Participation', 'Keep AI exposure meaningful while prioritizing drawdown control.', [40, 15, 10, 25, 7, 3], [10, 20], 5, 35, 30, 'Capital preservation', '-12% to -24%', 5, 4, ['Lower expected volatility', 'Still participates in AI buildout', 'Better fit for capital preservation'], ['Less upside if AI infrastructure stocks rally hard', 'May feel too conservative for high conviction'], 'A portfolio where preserving capital matters more than maximizing AI upside.', 'Lower AI sleeve'),
+  template('conservative-ai-participation', 'Conservative AI 15', 'Lower-volatility profile with a 15% AI sleeve and stronger bond ballast.', [40, 15, 10, 25, 7, 3], [10, 20], 5, 35, 30, 'Capital preservation', '-12% to -24%', 5, 4, ['Lower expected volatility', 'Still participates in AI buildout', 'Fits capital preservation better'], ['Less upside in an AI rally', 'May feel too conservative'], 'A portfolio where preserving capital matters more than maximizing AI upside.', 'Lower AI sleeve'),
 ]
 
 function template(id: string, name: string, purpose: string, targetValues: number[], aiRange: [number, number], maxSingle: number, maxTop10: number, maxBucket: number, risk: string, drawdownRange: string, upside: number, complexity: number, pros: string[], cons: string[], bestFor: string, warningLabel: string): StrategyTemplate {
@@ -239,22 +380,21 @@ const stressScenarios: StressScenario[] = [
 
 function sampleSnapshots(): PortfolioSnapshot[] {
   const holdings: Holding[] = [
-    holding('Family', 'Joint taxable', 'Taxable', 'VTI', 'Vanguard Total Stock Market ETF', 540, 247.8, 'Broad US equity', 'Broad Market'),
-    holding('Family', 'Joint taxable', 'Taxable', 'MSFT', 'Microsoft Corp', 220, 506.4, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'Joint taxable', 'Taxable', 'NVDA', 'NVIDIA Corp', 390, 187.6, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'Joint taxable', 'Taxable', 'ETN', 'Eaton Corp', 105, 421.3, 'AI buildout sleeve', 'Industrials'),
-    holding('Family', 'Joint taxable', 'Taxable', 'EQIX', 'Equinix Inc', 38, 812.4, 'AI buildout sleeve', 'Real Estate'),
-    holding('Family', 'Roth IRA', 'Roth IRA', 'AAPL', 'Apple Inc', 160, 293.05, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'Roth IRA', 'Roth IRA', 'AAPL', 'Apple Inc', 36, 293.05, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'Roth IRA', 'Roth IRA', 'ASML', 'ASML Holding NV', 22, 725.9, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', '401k', 'Retirement', 'BND', 'Vanguard Total Bond Market ETF', 710, 72.1, 'Bonds/fixed income', 'Fixed Income'),
-    holding('Family', '401k', 'Retirement', 'VXUS', 'Vanguard Total International Stock ETF', 620, 65.4, 'International equity', 'International Broad Market'),
-    holding('Family', '401k', 'Retirement', 'SGOV', 'iShares 0-3 Month Treasury Bond ETF', 260, 100.6, 'Cash', 'Cash & equivalents'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'VRT', 'Vertiv Holdings', 135, 176.7, 'AI buildout sleeve', 'Industrials'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'PANW', 'Palo Alto Networks', 55, 214.2, 'AI buildout sleeve', 'Information Technology'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'CEG', 'Constellation Energy', 80, 351.8, 'AI buildout sleeve', 'Utilities'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'AGNC', 'AGNC Investment Corp REIT', 300, 10.86, 'Alternatives/other', 'Real Estate'),
-    holding('Family', 'DB Plan', 'Tax-advantaged', 'PSHZF', 'Pershing Square Holdings Rights', 157, 0.35, 'Alternatives/other', 'Financials'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'VTI', 'Vanguard Total Stock Market ETF', 540, 247.8, 'Broad US equity', 'Broad Market'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'MSFT', 'Microsoft Corp', 220, 506.4, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'NVDA', 'NVIDIA Corp', 390, 187.6, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'ETN', 'Eaton Corp', 105, 421.3, 'AI buildout sleeve', 'Industrials'),
+    holding('Portfolio', 'Joint taxable', 'Taxable', 'EQIX', 'Equinix Inc', 38, 812.4, 'AI buildout sleeve', 'Real Estate'),
+    holding('Portfolio', 'Roth IRA', 'Roth IRA', 'AAPL', 'Apple Inc', 196, 293.05, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', 'Roth IRA', 'Roth IRA', 'ASML', 'ASML Holding NV', 22, 725.9, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', '401k', 'Retirement', 'BND', 'Vanguard Total Bond Market ETF', 710, 72.1, 'Bonds/fixed income', 'Fixed Income'),
+    holding('Portfolio', '401k', 'Retirement', 'VXUS', 'Vanguard Total International Stock ETF', 620, 65.4, 'International equity', 'International Broad Market'),
+    holding('Portfolio', '401k', 'Retirement', 'SGOV', 'iShares 0-3 Month Treasury Bond ETF', 260, 100.6, 'Cash', 'Cash & equivalents'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'VRT', 'Vertiv Holdings', 135, 176.7, 'AI buildout sleeve', 'Industrials'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'PANW', 'Palo Alto Networks', 55, 214.2, 'AI buildout sleeve', 'Information Technology'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'CEG', 'Constellation Energy', 80, 351.8, 'AI buildout sleeve', 'Utilities'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'AGNC', 'AGNC Investment Corp REIT', 300, 10.86, 'Alternatives/other', 'Real Estate'),
+    holding('Portfolio', 'DB Plan', 'Tax-advantaged', 'PSHZF', 'Pershing Square Holdings Rights', 157, 0.35, 'Alternatives/other', 'Financials'),
   ]
   const prior = holdings.map((item, index) => ({ ...item, id: `${item.id}-prior`, shares: index % 3 === 0 ? item.shares * 0.92 : item.shares, marketValue: index % 4 === 0 ? item.marketValue * 0.88 : item.marketValue * 0.96 }))
   return [
@@ -267,9 +407,11 @@ function holding(accountOwner: string, accountName: string, accountType: string,
   const defaults = defaultClassifications[ticker] ?? {}
   return {
     id: `${accountName}-${ticker}-${Math.random().toString(36).slice(2)}`,
+    accountId: slug(accountName),
     accountOwner,
     accountName,
     accountType,
+    accountCategory: detectAccountType(accountName),
     ticker,
     securityName,
     shares,
@@ -285,17 +427,24 @@ function holding(accountOwner: string, accountName: string, accountType: string,
 
 const dollarFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const percentFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
+const shareFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
 const storageKey = 'ai-buildout-portfolio-recomp-state-v1'
 
 function App() {
   const persisted = loadState()
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>(persisted.snapshots)
   const [selectedSnapshotId, setSelectedSnapshotId] = useState(persisted.selectedSnapshotId)
+  const [selectedAccountScope, setSelectedAccountScope] = useState(persisted.selectedAccountScope)
   const [activeTab, setActiveTab] = useState('Overview')
   const [selectedTemplateId, setSelectedTemplateId] = useState(persisted.selectedTemplateId)
+  const [customTemplates, setCustomTemplates] = useState<StrategyTemplate[]>(persisted.customTemplates)
+  const [themePreference, setThemePreference] = useState<ThemePreference>(persisted.themePreference)
+  const [ledgerMode, setLedgerMode] = useState<LedgerMode>(persisted.ledgerMode)
+  const [holdingEditOverlay, setHoldingEditOverlay] = useState<Record<string, Partial<Holding>>>(persisted.holdingEditOverlay)
   const [selectedStressId, setSelectedStressId] = useState('ai-disappointment')
   const [recompCandidates, setRecompCandidates] = useState<RecompCandidate[]>(persisted.recompCandidates)
   const [manualActions, setManualActions] = useState<ManualSandboxAction[]>(persisted.manualActions)
+  const [hiddenHoldingIds, setHiddenHoldingIds] = useState<string[]>(persisted.hiddenHoldingIds)
   const [decisionLog, setDecisionLog] = useState<DecisionLogEntry[]>(persisted.decisionLog)
   const [search, setSearch] = useState('')
   const [grouping, setGrouping] = useState<GroupingState>([])
@@ -304,36 +453,88 @@ function App() {
   const [minWeight, setMinWeight] = useState(0.25)
   const [importRows, setImportRows] = useState<Record<string, unknown>[]>([])
   const [importName, setImportName] = useState('')
-  const [importAccountOwner, setImportAccountOwner] = useState('Family')
+  const [importSnapshotDate, setImportSnapshotDate] = useState('')
+  const [importAccountOwner, setImportAccountOwner] = useState('Portfolio')
   const [importAccountType, setImportAccountType] = useState('Tax-advantaged')
   const [importMessage, setImportMessage] = useState('')
   const [selectedHoldingId, setSelectedHoldingId] = useState<string | null>(null)
 
   const currentSnapshot = snapshots.find((snapshot) => snapshot.id === selectedSnapshotId) ?? snapshots.at(-1)!
-  const template = strategyTemplates.find((item) => item.id === selectedTemplateId) ?? strategyTemplates[0]
+  const accountOptions = useMemo(() => accountScopes(currentSnapshot.holdings), [currentSnapshot.holdings])
+  const currentEffectiveHoldings = useMemo(() => applyHoldingEditOverlay(currentSnapshot.holdings, holdingEditOverlay), [currentSnapshot.holdings, holdingEditOverlay])
+  const scopedSourceHoldings = useMemo(() => {
+    const source = ledgerMode === 'sandbox' ? currentEffectiveHoldings : currentSnapshot.holdings
+    const scoped = selectedAccountScope === 'combined' ? source : source.filter((holding) => holding.accountId === selectedAccountScope)
+    return scoped.filter((holding) => !hiddenHoldingIds.includes(holding.id))
+  }, [currentEffectiveHoldings, currentSnapshot.holdings, hiddenHoldingIds, ledgerMode, selectedAccountScope])
+  const scopedHoldings = useMemo(() => aggregateHoldingsForView(scopedSourceHoldings), [scopedSourceHoldings])
+  const hiddenHoldings = currentSnapshot.holdings.filter((holding) => hiddenHoldingIds.includes(holding.id))
+  const editedCount = scopedSourceHoldings.filter((holding) => isHoldingEdited(holding.id, holdingEditOverlay)).length
+  const allTemplates = useMemo(() => [...strategyTemplates, ...customTemplates], [customTemplates])
+  const template = allTemplates.find((item) => item.id === selectedTemplateId) ?? strategyTemplates[0]
   const stress = stressScenarios.find((item) => item.id === selectedStressId) ?? stressScenarios[2]
-  const analytics = useMemo(() => analyze(currentSnapshot.holdings, template, stress, minDollar, minWeight), [currentSnapshot, template, stress, minDollar, minWeight])
-  const simulated = useMemo(() => simulateCandidates(currentSnapshot.holdings, [...recompCandidates, ...manualActions]), [currentSnapshot, recompCandidates, manualActions])
+  const analytics = useMemo(() => analyze(scopedHoldings, template, stress, minDollar, minWeight), [scopedHoldings, template, stress, minDollar, minWeight])
+  const simulated = useMemo(() => simulateCandidates(scopedHoldings, [...recompCandidates, ...manualActions]), [scopedHoldings, recompCandidates, manualActions])
   const simulatedAnalytics = useMemo(() => analyze(simulated, template, stress, minDollar, minWeight), [simulated, template, stress, minDollar, minWeight])
-  const selectedHolding = currentSnapshot.holdings.find((item) => item.id === selectedHoldingId)
+  const selectedHolding = scopedHoldings.find((item) => item.id === selectedHoldingId) ?? currentEffectiveHoldings.find((item) => item.id === selectedHoldingId)
+  const cumulativeWeightByHoldingId = useMemo(() => cumulativeWeights(analytics.topHoldings, analytics.total), [analytics.topHoldings, analytics.total])
 
-  persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedTemplateId: template.id, recompCandidates, manualActions, decisionLog })
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolveTheme(themePreference)
+  }, [themePreference])
+
+  useEffect(() => {
+    persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedAccountScope, selectedTemplateId: template.id, customTemplates, themePreference, ledgerMode, holdingEditOverlay, hiddenHoldingIds, recompCandidates, manualActions, decisionLog })
+  }, [currentSnapshot.id, customTemplates, decisionLog, hiddenHoldingIds, holdingEditOverlay, ledgerMode, manualActions, recompCandidates, selectedAccountScope, snapshots, template.id, themePreference])
+
+  const commitHoldingEdit = useCallback((updated: Holding) => {
+    setLedgerMode('sandbox')
+    const sourceIds = updated.sourceHoldingIds?.length ? updated.sourceHoldingIds : [updated.id]
+    const sourceRows = currentEffectiveHoldings.filter((holding) => sourceIds.includes(holding.id))
+    const totalValue = sourceRows.reduce((sum, holding) => sum + holding.marketValue, 0)
+    const totalShares = sourceRows.reduce((sum, holding) => sum + holding.shares, 0)
+    setHoldingEditOverlay((overlay) => {
+      const next = { ...overlay }
+      sourceRows.forEach((source, index) => {
+        const valueRatio = totalValue ? source.marketValue / totalValue : 1 / sourceRows.length
+        const shareRatio = totalShares ? source.shares / totalShares : valueRatio
+        const marketValue = updated.marketValue * valueRatio
+        const shares = updated.shares * shareRatio
+        next[source.id] = {
+          ...source,
+          assetClass: updated.assetClass,
+          sector: updated.sector,
+          ai: { ...updated.ai, buckets: [...updated.ai.buckets] },
+          notes: updated.notes,
+          marketValue,
+          shares,
+          price: updated.price ?? (shares ? marketValue / shares : source.price),
+          securityName: index === 0 ? updated.securityName : source.securityName,
+        }
+      })
+      return next
+    })
+  }, [currentEffectiveHoldings])
 
   const columns = useMemo<ColumnDef<Holding>[]>(() => [
-    { accessorKey: 'ticker', header: 'Ticker' },
+    { accessorKey: 'ticker', header: 'Ticker', cell: ({ row }) => <div className="flex items-center gap-2"><span>{row.original.ticker}</span>{holdingEditedInView(row.original, holdingEditOverlay) && <span className="edited-pill">Edited</span>}</div> },
     { accessorKey: 'securityName', header: 'Security' },
     { accessorKey: 'accountName', header: 'Account' },
-    { accessorKey: 'marketValue', header: 'Market value', cell: ({ row }) => dollarFmt.format(row.original.marketValue) },
-    { id: 'portfolioWeight', header: 'Portfolio %', cell: ({ row }) => `${percentFmt.format(weight(row.original.marketValue, analytics.total))}%` },
-    { accessorKey: 'assetClass', header: 'Asset class' },
-    { accessorKey: 'sector', header: 'Sector' },
-    { id: 'aiBucket', header: 'AI bucket', cell: ({ row }) => row.original.ai.buckets[0]?.bucket ?? 'Missing' },
-    { id: 'aiScore', header: 'AI score', cell: ({ row }) => row.original.ai.score.toFixed(1) },
-    { id: 'directness', header: 'Directness', cell: ({ row }) => row.original.ai.directness },
-    { id: 'warning', header: 'Warning', cell: ({ row }) => row.original.marketValue < minDollar ? 'Nuisance' : weight(row.original.marketValue, analytics.total) > template.maxSingle ? 'High concentration' : row.original.ai.source === 'unknown' ? 'Missing AI data' : 'Clear' },
-  ], [analytics.total, minDollar, template.maxSingle])
+    { accessorKey: 'shares', header: 'Shares', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.shares} step={0.0001} onChange={(value) => commitHoldingEdit(repriceHolding({ ...row.original, shares: value }))} /> : shareFmt.format(row.original.shares) },
+    { accessorKey: 'price', header: 'Price', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.price ?? 0} step={0.01} onChange={(value) => commitHoldingEdit(repriceHolding({ ...row.original, price: value }))} /> : row.original.price ? dollarFmt.format(row.original.price) : '-' },
+    { accessorKey: 'marketValue', header: 'Market value', cell: ({ row }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.marketValue} step={1} onChange={(value) => commitHoldingEdit({ ...row.original, marketValue: value })} /> : dollarFmt.format(row.original.marketValue) },
+    { id: 'portfolioWeight', header: 'Portfolio %', accessorFn: (row) => weight(row.marketValue, analytics.total), cell: ({ getValue }) => `${percentFmt.format(Number(getValue()))}%` },
+    { id: 'cumulativeWeight', header: 'Cumulative %', accessorFn: (row) => cumulativeWeightByHoldingId.get(row.id) ?? 0, cell: ({ getValue }) => `${percentFmt.format(Number(getValue()))}%` },
+    { accessorKey: 'assetClass', header: 'Asset class', cell: ({ row }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.assetClass} options={assetClasses} onChange={(value) => commitHoldingEdit({ ...row.original, assetClass: value as AssetClass })} /> : row.original.assetClass },
+    { accessorKey: 'sector', header: 'Sector', cell: ({ row }) => ledgerMode === 'sandbox' ? <TextCell value={row.original.sector} onChange={(value) => commitHoldingEdit({ ...row.original, sector: value })} /> : row.original.sector },
+    { id: 'aiBucket', header: 'AI bucket', accessorFn: (row) => row.ai.buckets[0]?.bucket ?? 'Missing', cell: ({ row, getValue }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.ai.buckets[0]?.bucket ?? aiBuckets[0]} options={aiBuckets} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, source: 'manual', buckets: [{ bucket: value as AIBucket, weight: 100 }] } })} /> : String(getValue()) },
+    { id: 'aiScore', header: 'AI score', accessorFn: (row) => row.ai.score, cell: ({ row, getValue }) => ledgerMode === 'sandbox' ? <NumberCell value={row.original.ai.score} min={0} max={5} step={0.5} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, score: value, source: 'manual' } })} /> : Number(getValue()).toFixed(1) },
+    { id: 'directness', header: 'Directness', accessorFn: (row) => row.ai.directness, cell: ({ row, getValue }) => ledgerMode === 'sandbox' ? <SelectCell value={row.original.ai.directness} options={['direct', 'indirect', 'none']} onChange={(value) => commitHoldingEdit({ ...row.original, ai: { ...row.original.ai, directness: value as Directness, source: 'manual' } })} /> : String(getValue()) },
+    { accessorKey: 'notes', header: 'Notes', cell: ({ row }) => ledgerMode === 'sandbox' ? <TextCell value={row.original.notes ?? ''} onChange={(value) => commitHoldingEdit({ ...row.original, notes: value })} /> : row.original.notes || '-' },
+    { id: 'warning', header: 'Warning', accessorFn: (row) => warningStatus(row, analytics.total, minDollar, template.maxSingle), cell: ({ getValue }) => String(getValue()) },
+  ], [analytics.total, commitHoldingEdit, cumulativeWeightByHoldingId, holdingEditOverlay, ledgerMode, minDollar, template.maxSingle])
   // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({ data: currentSnapshot.holdings, columns, state: { globalFilter: search, grouping, sorting }, onGlobalFilterChange: setSearch, onGroupingChange: setGrouping, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(), getGroupedRowModel: getGroupedRowModel(), getSortedRowModel: getSortedRowModel() })
+  const table = useReactTable({ data: scopedHoldings, columns, state: { globalFilter: search, grouping, sorting }, onGlobalFilterChange: setSearch, onGroupingChange: setGrouping, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(), getGroupedRowModel: getGroupedRowModel(), getSortedRowModel: getSortedRowModel() })
 
   function generateCandidates() {
     const candidates = buildRecompCandidates(analytics, template)
@@ -343,47 +544,86 @@ function App() {
   }
 
   function updateHolding(updated: Holding) {
-    setSnapshots((items) => items.map((snapshot) => snapshot.id === currentSnapshot.id ? { ...snapshot, holdings: snapshot.holdings.map((item) => item.id === updated.id ? updated : item) } : snapshot))
+    commitHoldingEdit(updated)
+    setLedgerMode('sandbox')
+    setActiveTab('Concentration & Holdings')
   }
 
-  async function parseUpload(file: File) {
-    const buffer = await file.arrayBuffer()
-    const text = new TextDecoder().decode(buffer)
-    let rows: Record<string, unknown>[]
-    let sourceName = file.name
-    if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
-      const workbook = XLSX.read(buffer)
-      const sheet = workbook.Sheets[workbook.SheetNames[0]]
-      rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
-    } else {
-      const lines = text.split(/\r?\n/)
-      const accountLine = lines.find((line) => line.includes('Positions for account'))
-      sourceName = accountLine?.replaceAll('"', '').trim() || file.name
-      const headerIndex = lines.findIndex((line) => line.includes('Symbol') && line.includes('Description'))
-      const parseText = headerIndex >= 0 ? lines.slice(headerIndex).join('\n') : text
-      const parsed = Papa.parse<Record<string, unknown>>(parseText, { header: true, skipEmptyLines: true })
-      rows = parsed.data
+  function discardHoldingEdits() {
+    setHoldingEditOverlay({})
+    setLedgerMode('uploaded')
+  }
+
+  function saveEditedSnapshot() {
+    const editedHoldings = applyHoldingEditOverlay(currentSnapshot.holdings, holdingEditOverlay).map((holding) => ({
+      ...holding,
+      id: `${holding.id}-edited-${crypto.randomUUID()}`,
+      ai: { ...holding.ai, buckets: [...holding.ai.buckets] },
+    }))
+    const snapshot: PortfolioSnapshot = {
+      id: crypto.randomUUID(),
+      name: `${currentSnapshot.name} edited`,
+      date: new Date().toISOString(),
+      source: `Edited sandbox from ${currentSnapshot.name}`,
+      holdings: editedHoldings,
     }
-    setImportRows(rows.filter((row) => row.Symbol || row.ticker || row.Ticker))
-    setImportName(sourceName)
-    setImportMessage(`${rows.length} rows detected. Review account fields, then save as a snapshot.`)
+    setSnapshots((items) => [...items, snapshot])
+    setSelectedSnapshotId(snapshot.id)
+    setHoldingEditOverlay({})
+    setLedgerMode('uploaded')
+    setSelectedHoldingId(null)
+  }
+
+  async function parseUpload(files: FileList | File) {
+    const fileList = files instanceof File ? [files] : Array.from(files)
+    const stagedRows: Record<string, unknown>[] = []
+    for (const file of fileList) {
+      const buffer = await file.arrayBuffer()
+      const text = new TextDecoder().decode(buffer)
+      let rows: Record<string, unknown>[]
+      let sourceName = file.name
+      let detected = detectAccountFromText(file.name, file.name)
+      if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
+        const workbook = XLSX.read(buffer)
+        const sheet = workbook.Sheets[workbook.SheetNames[0]]
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+      } else {
+        const lines = text.split(/\r?\n/)
+        const accountLine = lines.find((line) => line.includes('Positions for account'))
+        sourceName = accountLine?.replaceAll('"', '').trim() || file.name
+        detected = detectAccountFromText(sourceName, file.name)
+        const asOf = detectAsOfDate(sourceName)
+        const headerIndex = lines.findIndex((line) => line.includes('Symbol') && line.includes('Description'))
+        const parseText = headerIndex >= 0 ? lines.slice(headerIndex).join('\n') : text
+        const parsed = Papa.parse<Record<string, unknown>>(parseText, { header: true, skipEmptyLines: true })
+        rows = parsed.data
+        if (asOf && !importSnapshotDate) setImportSnapshotDate(asOf)
+      }
+      rows.filter((row) => row.Symbol || row.ticker || row.Ticker).forEach((row) => stagedRows.push({ ...row, __accountName: detected.name, __accountType: detected.type, __accountId: detected.id, __source: sourceName, __asOfDate: detectAsOfDate(sourceName) }))
+    }
+    setImportRows(stagedRows)
+    setImportName(fileList.length > 1 ? `Combined ${fileList.length}-account upload` : String(stagedRows[0]?.__source ?? fileList[0]?.name ?? 'Uploaded file'))
+    setImportAccountType(String(stagedRows[0]?.__accountType ?? 'Tax-advantaged'))
+    setImportMessage(`${stagedRows.length} rows detected across ${new Set(stagedRows.map((row) => row.__accountId)).size} account(s). Review, then save as a snapshot.`)
   }
 
   function saveImportSnapshot() {
-    const holdings = importRows.map((row, index) => normalizeImportedRow(row, importAccountOwner, importName || 'Uploaded account', importAccountType, index)).filter((row): row is Holding => Boolean(row))
+    const holdings = importRows.map((row, index) => normalizeImportedRow(row, importAccountOwner, String(row.__accountName ?? importName ?? 'Uploaded account'), String(row.__accountType ?? importAccountType), index)).filter((row): row is Holding => Boolean(row))
     if (!holdings.length) {
       setImportMessage('No usable holdings found. Confirm the file includes ticker and market value columns.')
       return
     }
-    const snapshot: PortfolioSnapshot = { id: crypto.randomUUID(), name: `${importName || 'Uploaded portfolio'} snapshot`, date: new Date().toISOString(), source: importName || 'Uploaded file', holdings }
+    const snapshotDate = importSnapshotDate ? new Date(importSnapshotDate).toISOString() : new Date().toISOString()
+    const snapshot: PortfolioSnapshot = { id: crypto.randomUUID(), name: `${importName || 'Uploaded portfolio'} snapshot`, date: snapshotDate, source: importName || 'Uploaded file', holdings }
     setSnapshots((items) => [...items, snapshot])
     setSelectedSnapshotId(snapshot.id)
     setImportRows([])
+    setImportSnapshotDate('')
     setImportMessage(`Saved ${holdings.length} holdings as a dated snapshot.`)
   }
 
   return (
-    <main className="min-h-[100dvh] bg-zinc-950 text-zinc-100">
+    <main className="min-h-[100dvh] bg-app text-app">
       <div className="mx-auto max-w-[1400px] px-4 py-5 md:px-6">
         <header className="mb-6 grid gap-5 border-b border-white/10 pb-5 lg:grid-cols-[1.5fr_1fr]">
           <div>
@@ -392,37 +632,42 @@ function App() {
               <span>Offline portfolio planning</span>
             </div>
             <h1 className="max-w-4xl text-3xl font-semibold tracking-tight text-zinc-50 md:text-5xl">AI Buildout Portfolio Recomp Cockpit</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400 md:text-base">
-              A private browser workspace for x-raying family holdings, measuring AI infrastructure exposure, stress testing simple scenarios, and drafting simulated recomp candidates.
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted md:text-base">
+              A private browser workspace for x-raying portfolio holdings, measuring AI infrastructure exposure, stress testing simple scenarios, and drafting simulated recomp candidates.
             </p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <div className="rounded-2xl border border-app bg-panel p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-sm text-zinc-400">Current snapshot</span>
+              <span className="text-sm text-muted">Current snapshot</span>
               <select className="control" value={currentSnapshot.id} onChange={(event) => setSelectedSnapshotId(event.target.value)}>
                 {snapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{snapshot.name}</option>)}
               </select>
             </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="field"><span>Account scope</span><select className="control" value={selectedAccountScope} onChange={(event) => setSelectedAccountScope(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>
+              <label className="field"><span>Theme</span><select className="control" value={themePreference} onChange={(event) => setThemePreference(event.target.value as ThemePreference)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
+            </div>
+            <p className="mt-3 text-xs text-muted">As of {new Date(currentSnapshot.date).toLocaleDateString()}</p>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <Metric label="Value" value={dollarFmt.format(analytics.total)} />
               <Metric label="AI exposure" value={`${percentFmt.format(analytics.aiExposure)}%`} />
               <Metric label="Top 10" value={`${percentFmt.format(analytics.top10Weight)}%`} />
-              <Metric label="Stress" value={`${percentFmt.format(analytics.stressImpact)}%`} />
+              <Metric label="Scenario" value={`${percentFmt.format(analytics.stressImpact)}% (${dollarFmt.format(scenarioImpactDollars(analytics))})`} />
             </div>
           </div>
         </header>
 
-        <nav className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/80 p-2">
-          {['Overview', 'Import & Snapshots', 'X-Ray & Concentration', 'AI Buildout', 'Recomp Sandbox'].map((tab) => (
+        <nav className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-app bg-panel p-2">
+          {['Overview', 'Import & Snapshots', 'Concentration & Holdings', 'AI Buildout', 'Recomp Sandbox'].map((tab) => (
             <button key={tab} className={`tab ${activeTab === tab ? 'tab-active' : ''}`} onClick={() => setActiveTab(tab)}>{tab}</button>
           ))}
         </nav>
 
-        {activeTab === 'Overview' && <Overview analytics={analytics} template={template} stress={stress} setTemplate={setSelectedTemplateId} setStress={setSelectedStressId} generateCandidates={generateCandidates} />}
-        {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} message={importMessage} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
-        {activeTab === 'X-Ray & Concentration' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} />}
+        {activeTab === 'Overview' && <Overview analytics={analytics} template={template} templates={allTemplates} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} stress={stress} setTemplate={setSelectedTemplateId} setStress={setSelectedStressId} generateCandidates={generateCandidates} />}
+        {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} setRows={setImportRows} message={importMessage} snapshotDate={importSnapshotDate} setSnapshotDate={setImportSnapshotDate} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
+        {activeTab === 'Concentration & Holdings' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} hideHolding={(holding) => setHiddenHoldingIds((items) => [...new Set([...items, ...(holding.sourceHoldingIds ?? [holding.id])])])} hiddenHoldings={hiddenHoldings} unhideHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} ledgerMode={ledgerMode} setLedgerMode={setLedgerMode} editedCount={editedCount} discardEdits={discardHoldingEdits} saveEditedSnapshot={saveEditedSnapshot} />}
         {activeTab === 'AI Buildout' && <AIBuildout analytics={analytics} current={currentSnapshot} selectedHolding={selectedHolding} setSelectedHoldingId={setSelectedHoldingId} updateHolding={updateHolding} />}
-        {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={currentSnapshot.holdings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
+        {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={scopedHoldings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
 
         <footer className="mt-8 border-t border-white/10 pt-4 text-xs leading-5 text-zinc-500">
           This app is for portfolio analysis and planning only. It does not provide financial advice, tax advice, or execute trades. All outputs are simulations based on uploaded data and simplified assumptions.
@@ -432,21 +677,28 @@ function App() {
   )
 }
 
-function Overview({ analytics, template, stress, setTemplate, setStress, generateCandidates }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate; stress: StressScenario; setTemplate: (id: string) => void; setStress: (id: string) => void; generateCandidates: () => void }) {
+function Overview({ analytics, template, templates, customTemplates, setCustomTemplates, stress, setTemplate, setStress, generateCandidates }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate; templates: StrategyTemplate[]; customTemplates: StrategyTemplate[]; setCustomTemplates: React.Dispatch<React.SetStateAction<StrategyTemplate[]>>; stress: StressScenario; setTemplate: (id: string) => void; setStress: (id: string) => void; generateCandidates: () => void }) {
+  function duplicateTemplate() {
+    const copy = { ...template, id: `custom-${crypto.randomUUID()}`, name: `${template.name} custom`, targets: { ...template.targets }, pros: [...template.pros], cons: [...template.cons], warningLabel: 'Custom planning profile' }
+    setCustomTemplates((items) => [...items, copy])
+    setTemplate(copy.id)
+  }
   return <section className="grid gap-5">
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
       <MetricCard icon={<Database size={20} />} label="Total portfolio value" value={dollarFmt.format(analytics.total)} />
       <MetricCard icon={<StackSimple size={20} />} label="Holdings" value={String(analytics.holdings.length)} />
       <MetricCard icon={<Sparkle size={20} />} label="AI buildout exposure" value={`${percentFmt.format(analytics.aiExposure)}%`} />
-      <MetricCard icon={<Funnel size={20} />} label="Largest holding" value={`${percentFmt.format(analytics.largestWeight)}%`} />
-      <MetricCard icon={<Pulse size={20} />} label="Risk-budget score" value={analytics.riskScore.toFixed(2)} />
+      <MetricCard icon={<Funnel size={20} />} label={`Largest holding · ${analytics.topHoldings[0]?.ticker ?? 'N/A'}`} value={`${percentFmt.format(analytics.largestWeight)}%`} />
+      <MetricCard icon={<Pulse size={20} />} label="Risk-budget estimate" value={analytics.riskScore.toFixed(2)} />
     </div>
     <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-      <Panel title="30-second read" action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
-        <p className="text-balance text-lg leading-8 text-zinc-200">{executiveSummary(analytics, template)}</p>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          <label className="field"><span>Selected strategy template</span><select className="control" value={template.id} onChange={(event) => setTemplate(event.target.value)}>{strategyTemplates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label className="field"><span>Stress scenario</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <Panel title="Current read" action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
+        <p className="text-balance text-lg leading-8 text-app">{executiveSummary(analytics, template)}</p>
+        <p className="mt-3 text-sm leading-6 text-muted">Risk-budget estimate is a rough weighted exposure score: cash counts near 0, bonds count lower, broad equity counts around 1, and higher-beta AI buckets count more. It is useful for comparing before/after simulations, not for predicting actual volatility.</p>
+        <div className="mt-5 rounded-xl border border-app bg-soft p-3">
+          <label className="field"><span>Scenario sensitivity</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <p className="mt-3 text-sm leading-6 text-muted">{stressExplanation(stress)}</p>
+          <StressShockList scenario={stress} />
         </div>
       </Panel>
       <WarningPanel warnings={analytics.warnings} />
@@ -456,37 +708,132 @@ function Overview({ analytics, template, stress, setTemplate, setStress, generat
       <ChartPanel title="Sector"><Donut data={analytics.sectorData.slice(0, 8)} /></ChartPanel>
       <ChartPanel title="Current vs target allocation"><TargetBars analytics={analytics} template={template} /></ChartPanel>
       <ChartPanel title="AI buildout exposure by bucket"><BarList data={analytics.aiBucketData.slice(0, 10)} /></ChartPanel>
-      <ChartPanel title="Top 10 holdings"><BarList data={analytics.topHoldings.slice(0, 10).map((h) => ({ name: h.ticker, value: weight(h.marketValue, analytics.total) }))} /></ChartPanel>
+      <ChartPanel title="Top 10 holdings"><BarList data={holdingBarData(analytics.topHoldings.slice(0, 10), analytics.total)} /></ChartPanel>
     </div>
+    <Panel title="Strategy templates">
+      <div className="template-grid">
+        {templates.map((item) => <TemplateCard key={item.id} template={item} analytics={analytics} selected={item.id === template.id} onSelect={() => setTemplate(item.id)} />)}
+      </div>
+      <TemplateEditor template={template} isCustom={template.id.startsWith('custom-')} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} setTemplate={setTemplate} duplicateTemplate={duplicateTemplate} />
+    </Panel>
   </section>
 }
 
-function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: PortfolioSnapshot; rows: Record<string, unknown>[]; message: string; accountOwner: string; accountType: string; setAccountOwner: (v: string) => void; setAccountType: (v: string) => void; parseUpload: (file: File) => void; saveImportSnapshot: () => void; setSnapshots: React.Dispatch<React.SetStateAction<PortfolioSnapshot[]>>; setSelectedSnapshotId: (id: string) => void; generateCandidates: () => void }) {
+function StressShockList({ scenario }: { scenario: StressScenario }) {
+  return <div className="stress-list">{Object.entries(scenario.shocks).map(([name, value]) => <span key={name}>{name}: <strong>{value && value > 0 ? '+' : ''}{value}%</strong></span>)}</div>
+}
+
+function TemplateEditor({ template, isCustom, customTemplates, setCustomTemplates, setTemplate, duplicateTemplate }: { template: StrategyTemplate; isCustom: boolean; customTemplates: StrategyTemplate[]; setCustomTemplates: React.Dispatch<React.SetStateAction<StrategyTemplate[]>>; setTemplate: (id: string) => void; duplicateTemplate: () => void }) {
+  function updateCustom(next: StrategyTemplate) {
+    setCustomTemplates((items) => items.map((item) => item.id === next.id ? next : item))
+  }
+  return <div className="template-editor">
+    <div>
+      <h3>{isCustom ? 'Edit custom template' : 'Make your own template'}</h3>
+      <p>{isCustom ? 'Adjust targets and guardrails. Changes are saved locally in this browser.' : 'Default profiles are locked. Duplicate one to create a local editable template.'}</p>
+    </div>
+    {!isCustom ? <button className="ghost" onClick={duplicateTemplate}>Duplicate selected template</button> : <div className="grid gap-3">
+      <label className="field"><span>Template name</span><input className="control" value={template.name} onChange={(event) => updateCustom({ ...template, name: event.target.value })} /></label>
+      <div className="custom-target-grid">
+        {assetClasses.map((asset) => <label key={asset} className="field"><span>{assetShortLabel(asset)} target %</span><input className="control" type="number" min={0} max={100} value={template.targets[asset]} onChange={(event) => updateCustom({ ...template, targets: { ...template.targets, [asset]: Number(event.target.value) } })} /></label>)}
+      </div>
+      <div className="custom-target-grid">
+        <label className="field"><span>Max single %</span><input className="control" type="number" value={template.maxSingle} onChange={(event) => updateCustom({ ...template, maxSingle: Number(event.target.value) })} /></label>
+        <label className="field"><span>Max top 10 %</span><input className="control" type="number" value={template.maxTop10} onChange={(event) => updateCustom({ ...template, maxTop10: Number(event.target.value) })} /></label>
+        <label className="field"><span>Max AI bucket %</span><input className="control" type="number" value={template.maxBucket} onChange={(event) => updateCustom({ ...template, maxBucket: Number(event.target.value) })} /></label>
+      </div>
+      <button className="ghost justify-self-start" onClick={() => { setCustomTemplates(customTemplates.filter((item) => item.id !== template.id)); setTemplate(strategyTemplates[0].id) }}>Delete custom template</button>
+    </div>}
+  </div>
+}
+
+function TemplateCard({ template, analytics, selected, onSelect }: { template: StrategyTemplate; analytics: ReturnType<typeof analyze>; selected: boolean; onSelect: () => void }) {
+  const drift = assetClasses.reduce((sum, asset) => sum + Math.abs(weight(analytics.assetTotals[asset] ?? 0, analytics.total) - template.targets[asset]), 0)
+  return <button className={`template-card ${selected ? 'template-card-selected' : ''}`} onClick={onSelect}>
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h3>{template.name}</h3>
+        <p>{template.purpose}</p>
+      </div>
+      <span className="template-pill">{template.targets['AI buildout sleeve']}% AI</span>
+    </div>
+    <div className="allocation-strip" aria-label={`${template.name} allocation mix`}>
+      {assetClasses.map((asset) => <span key={asset} title={`${asset}: ${template.targets[asset]}%`} style={{ width: `${template.targets[asset]}%`, backgroundColor: assetClassColors[asset] }} />)}
+    </div>
+    <div className="allocation-legend">
+      {assetClasses.map((asset) => <span key={asset}><i style={{ backgroundColor: assetClassColors[asset] }} />{assetShortLabel(asset)} {template.targets[asset]}%</span>)}
+    </div>
+    <div className="template-stats">
+      <span>Drawdown <strong>{template.drawdownRange}</strong></span>
+      <span>Max single <strong>{template.maxSingle}%</strong></span>
+      <span>Top 10 max <strong>{template.maxTop10}%</strong></span>
+      <span>Current drift <strong>{percentFmt.format(drift)} pts</strong></span>
+    </div>
+    <div className="template-pros-cons">
+      <div><strong>Pros</strong>{template.pros.slice(0, 2).map((item) => <span key={item}>{item}</span>)}</div>
+      <div><strong>Cons</strong>{template.cons.slice(0, 2).map((item) => <span key={item}>{item}</span>)}</div>
+    </div>
+  </button>
+}
+
+function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: PortfolioSnapshot; rows: Record<string, unknown>[]; setRows: React.Dispatch<React.SetStateAction<Record<string, unknown>[]>>; message: string; snapshotDate: string; setSnapshotDate: (value: string) => void; accountOwner: string; accountType: string; setAccountOwner: (v: string) => void; setAccountType: (v: string) => void; parseUpload: (files: FileList | File) => void; saveImportSnapshot: () => void; setSnapshots: React.Dispatch<React.SetStateAction<PortfolioSnapshot[]>>; setSelectedSnapshotId: (id: string) => void; generateCandidates: () => void }) {
   const latest = props.snapshots.at(-1)
   const previous = props.snapshots.at(-2)
   const comparison = latest && previous ? compareSnapshots(previous, latest) : []
+  const stagedAccounts = summarizeStagedAccounts(props.rows)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  function beginRename(snapshot: PortfolioSnapshot) {
+    setRenamingId(snapshot.id)
+    setRenameDraft(snapshot.name)
+  }
+  function saveRename() {
+    const name = renameDraft.trim()
+    if (!renamingId || !name) return
+    props.setSnapshots((items) => items.map((item) => item.id === renamingId ? { ...item, name } : item))
+    setRenamingId(null)
+    setRenameDraft('')
+  }
   return <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
     <Panel title="Upload holdings" action={<button className="primary" onClick={props.generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
       <label className="upload">
         <FileArrowUp size={28} />
-        <span>Drop in a CSV or XLSX brokerage positions file</span>
-        <input type="file" accept=".csv,.xlsx,.xls" onChange={(event) => event.target.files?.[0] && props.parseUpload(event.target.files[0])} />
+        <span>Drop in one or more CSV/XLSX brokerage position files</span>
+        <input type="file" multiple accept=".csv,.xlsx,.xls" onChange={(event) => event.target.files && props.parseUpload(event.target.files)} />
       </label>
       {props.message && <p className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-sm text-emerald-100">{props.message}</p>}
       {props.rows.length > 0 && <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="field"><span>Account owner</span><input className="control" value={props.accountOwner} onChange={(event) => props.setAccountOwner(event.target.value)} /></label>
         <label className="field"><span>Account type</span><input className="control" value={props.accountType} onChange={(event) => props.setAccountType(event.target.value)} /></label>
-        <button className="primary md:col-span-2" onClick={props.saveImportSnapshot}><UploadSimple size={16} /> Save as dated snapshot</button>
+        <label className="field md:col-span-2"><span>Snapshot as-of date</span><input className="control" type="date" value={props.snapshotDate} onChange={(event) => props.setSnapshotDate(event.target.value)} /></label>
+        <div className="staged-account-list md:col-span-2">
+          {stagedAccounts.map((account) => <div key={account.id} className="staged-account">
+            <div><strong>{account.name}</strong><span>{account.type} · {account.rows} rows · {dollarFmt.format(account.value)}</span></div>
+            <button className="ghost" onClick={() => props.setRows((rows) => rows.filter((row) => row.__accountId !== account.id))}>Remove account</button>
+          </div>)}
+        </div>
+        <div className="flex flex-wrap gap-2 md:col-span-2">
+          <button className="primary" onClick={props.saveImportSnapshot}><UploadSimple size={16} /> Save as dated snapshot</button>
+          <button className="ghost" onClick={() => props.setRows([])}>Clear staged files</button>
+        </div>
         <PreviewRows rows={props.rows} />
       </div>}
     </Panel>
     <Panel title="Snapshots and changes">
       <div className="space-y-3">
         {props.snapshots.map((snapshot) => <div key={snapshot.id} className="row">
-          <div><p className="font-medium text-zinc-100">{snapshot.name}</p><p className="text-xs text-zinc-500">{new Date(snapshot.date).toLocaleString()} · {snapshot.holdings.length} holdings · {snapshot.source}</p></div>
+          <div className="min-w-0 flex-1">
+            {renamingId === snapshot.id ? <div className="rename-inline">
+              <input className="control" value={renameDraft} autoFocus onChange={(event) => setRenameDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveRename(); if (event.key === 'Escape') setRenamingId(null) }} />
+              <button className="primary" onClick={saveRename}>Save</button>
+              <button className="ghost" onClick={() => setRenamingId(null)}>Cancel</button>
+            </div> : <p className="font-medium text-zinc-100">{snapshot.name}</p>}
+            <p className="text-xs text-zinc-500">{new Date(snapshot.date).toLocaleString()} · {snapshot.holdings.length} holdings · {snapshot.source}</p>
+          </div>
           <div className="flex gap-2">
             <button className="ghost" onClick={() => props.setSelectedSnapshotId(snapshot.id)}>View</button>
-            {props.snapshots.length > 1 && <button className="icon-button" onClick={() => props.setSnapshots((items) => items.filter((item) => item.id !== snapshot.id))}><Trash size={16} /></button>}
+            <button className="ghost" onClick={() => beginRename(snapshot)}><PencilSimple size={16} /> Rename</button>
+            {props.snapshots.length > 1 && <button className="ghost" onClick={() => props.setSnapshots((items) => items.filter((item) => item.id !== snapshot.id))}><Trash size={16} /> Delete</button>}
           </div>
         </div>)}
       </div>
@@ -500,13 +847,28 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
   </section>
 }
 
-function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void }) {
+function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minDollar, minWeight, setMinDollar, setMinWeight, setSelectedHoldingId, hideHolding, hiddenHoldings, unhideHolding, ledgerMode, setLedgerMode, editedCount, discardEdits, saveEditedSnapshot }: { analytics: ReturnType<typeof analyze>; table: ReturnType<typeof useReactTable<Holding>>; search: string; setSearch: (v: string) => void; grouping: GroupingState; setGrouping: (v: GroupingState) => void; minDollar: number; minWeight: number; setMinDollar: (v: number) => void; setMinWeight: (v: number) => void; setSelectedHoldingId: (id: string) => void; hideHolding: (holding: Holding) => void; hiddenHoldings: Holding[]; unhideHolding: (id: string) => void; ledgerMode: LedgerMode; setLedgerMode: (mode: LedgerMode) => void; editedCount: number; discardEdits: () => void; saveEditedSnapshot: () => void }) {
   return <section className="grid gap-5">
     <div className="grid gap-5 xl:grid-cols-2">
-      <ChartPanel title="Top holdings ranked"><BarList data={analytics.topHoldings.slice(0, 15).map((h) => ({ name: h.ticker, value: weight(h.marketValue, analytics.total) }))} /></ChartPanel>
-      <ChartPanel title="Holdings treemap"><Treemap width={500} height={300} data={analytics.topHoldings.map((h) => ({ name: h.ticker, size: h.marketValue }))} dataKey="size" aspectRatio={4 / 3} stroke="#18181b" fill="#34d399" /></ChartPanel>
+      <ChartPanel title="Top holdings ranked"><BarList data={holdingBarData(analytics.topHoldings.slice(0, 15), analytics.total)} /></ChartPanel>
+      <ChartPanel title="Holdings treemap"><Treemap width={500} height={300} data={analytics.topHoldings.map((h) => ({ name: h.ticker, size: h.marketValue }))} dataKey="size" aspectRatio={4 / 3} stroke="var(--app-bg)" fill="var(--accent)" /></ChartPanel>
     </div>
-    <Panel title="Holdings table" action={<button className="ghost" onClick={() => exportCsv('current-holdings.csv', analytics.holdings)}><DownloadSimple size={16} /> Export</button>}>
+    <ConcentrationCutoffs analytics={analytics} />
+    <Panel title="Holdings table" action={<button className="ghost" onClick={() => exportCsv('current-view-holdings.csv', analytics.holdings)}><DownloadSimple size={16} /> Export current view</button>}>
+      <div className="ledger-toolbar">
+        <div>
+          <div className="segmented">
+            <button className={ledgerMode === 'uploaded' ? 'selected' : ''} onClick={() => setLedgerMode('uploaded')}>Uploaded snapshot</button>
+            <button className={ledgerMode === 'sandbox' ? 'selected' : ''} onClick={() => setLedgerMode('sandbox')}>Edit sandbox</button>
+          </div>
+          <p>Sandbox edits update every chart and warning without changing the uploaded snapshot. Save them as a new edited snapshot when you want a permanent copy.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="edited-count">{editedCount} edited</span>
+          <button className="ghost" onClick={discardEdits}>Discard edits</button>
+          <button className="primary" onClick={saveEditedSnapshot} disabled={!editedCount}>Save as edited snapshot</button>
+        </div>
+      </div>
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
         <label className="search"><MagnifyingGlass size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search holdings" /></label>
         <select className="control" value={grouping[0] ?? ''} onChange={(event) => setGrouping(event.target.value ? [event.target.value] : [])}><option value="">No grouping</option><option value="accountName">Group account</option><option value="assetClass">Group asset class</option><option value="sector">Group sector</option></select>
@@ -515,10 +877,14 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
       </div>
       <div className="overflow-auto rounded-xl border border-white/10">
         <table className="data-table">
-          <thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}</thead>
-          <tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} onClick={() => setSelectedHoldingId(row.original.id)}>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody>
+          <thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} className={header.column.getCanSort() ? 'sortable-th' : ''} onClick={header.column.getToggleSortingHandler()}><span>{flexRender(header.column.columnDef.header, header.getContext())}<SortIndicator value={header.column.getIsSorted()} /></span></th>)}<th>Actions</th></tr>)}</thead>
+          <tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} onClick={() => setSelectedHoldingId(row.original.id)}>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}<td><button className="ghost" onClick={(event) => { event.stopPropagation(); hideHolding(row.original) }}>Hide</button></td></tr>)}</tbody>
         </table>
       </div>
+      {hiddenHoldings.length > 0 && <div className="mt-4 rounded-xl border border-app bg-soft p-3">
+        <h3 className="section-label">Hidden positions</h3>
+        <div className="flex flex-wrap gap-2">{hiddenHoldings.map((holding) => <button key={holding.id} className="ghost" onClick={() => unhideHolding(holding.id)}>{holding.ticker} · Unhide</button>)}</div>
+      </div>}
     </Panel>
   </section>
 }
@@ -526,7 +892,7 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
 function AIBuildout({ analytics, current, selectedHolding, setSelectedHoldingId, updateHolding }: { analytics: ReturnType<typeof analyze>; current: PortfolioSnapshot; selectedHolding?: Holding; setSelectedHoldingId: (id: string | null) => void; updateHolding: (holding: Holding) => void }) {
   return <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
     <div className="grid gap-5">
-      <ChartPanel title="AI exposure by bucket"><BarList data={analytics.aiBucketData} /></ChartPanel>
+      <ChartPanel title="AI exposure by bucket"><BarList data={compactChartData(analytics.aiBucketData, 8)} /></ChartPanel>
       <ChartPanel title="Direct vs indirect AI exposure"><Donut data={analytics.directnessData} /></ChartPanel>
       <Panel title="Top AI exposure contributors">
         <div className="space-y-2">
@@ -534,19 +900,39 @@ function AIBuildout({ analytics, current, selectedHolding, setSelectedHoldingId,
         </div>
       </Panel>
     </div>
-    <Panel title="Editable classification" action={selectedHolding && <button className="ghost" onClick={() => setSelectedHoldingId(null)}>Close</button>}>
-      {!selectedHolding ? <div className="empty"><PencilSimple size={28} /><p>Select a holding from the contributor list or x-ray table to edit its AI classification.</p></div> : <ClassificationEditor holding={selectedHolding} current={current} updateHolding={updateHolding} />}
-    </Panel>
+    <div className="grid gap-5">
+      <AIScoreGuide />
+      <Panel title="Editable classification" action={selectedHolding && <button className="ghost" onClick={() => setSelectedHoldingId(null)}>Close</button>}>
+        {!selectedHolding ? <div className="empty"><PencilSimple size={28} /><p>Select a holding from the contributor list or holdings table to edit its AI classification.</p></div> : <ClassificationEditor holding={selectedHolding} current={current} updateHolding={updateHolding} />}
+      </Panel>
+    </div>
   </section>
+}
+function AIScoreGuide() {
+  const rows = [
+    ['0', 'No meaningful AI buildout exposure'],
+    ['1', 'Broad, passive, or incidental exposure'],
+    ['2', 'Tangential beneficiary'],
+    ['3', 'Meaningful indirect supply-chain exposure'],
+    ['4', 'Direct core AI infrastructure exposure'],
+    ['5', 'Pure-play or mission-critical AI infrastructure'],
+  ]
+  return <Panel title="AI score guide">
+    <p className="mb-3 text-sm leading-6 text-muted">The score is a local heuristic, not a market model. It mainly helps weight AI exposure across holdings; dollar size, bucket, directness, and confidence matter more than the score by itself.</p>
+    <div className="score-guide">{rows.map(([score, label]) => <div key={score}><strong>{score}</strong><span>{label}</span></div>)}</div>
+  </Panel>
 }
 
 function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualActions, setManualActions, clearCandidates, generateCandidates, decisionLog }: { analytics: ReturnType<typeof analyze>; simulatedAnalytics: ReturnType<typeof analyze>; holdings: Holding[]; candidates: RecompCandidate[]; manualActions: ManualSandboxAction[]; setManualActions: React.Dispatch<React.SetStateAction<ManualSandboxAction[]>>; clearCandidates: () => void; generateCandidates: () => void; decisionLog: DecisionLogEntry[] }) {
   const [ticker, setTicker] = useState(holdings[0]?.ticker ?? '')
   const [amount, setAmount] = useState(5000)
   const allActions = [...candidates, ...manualActions]
+  const netChange = simulatedAnalytics.total - analytics.total
+  const currentScenario = scenarioImpactDollars(analytics)
+  const simulatedScenario = scenarioImpactDollars(simulatedAnalytics)
   function addManual(actionType: ActionType) {
     const holding = holdings.find((item) => item.ticker === ticker)
-    setManualActions((items) => [...items, { id: crypto.randomUUID(), actionType, tickerOrBucket: ticker, dollarAmount: amount, estimatedShares: holding?.price ? amount / holding.price : undefined, beforeWeight: holding ? weight(holding.marketValue, analytics.total) : 0, afterWeight: holding ? weight(holding.marketValue + (actionType.includes('Buy') ? amount : -amount), analytics.total) : 0, reason: 'Manual sandbox action.', riskImpact: 'User-defined impact.', alignmentImpact: 'Included in simulated before/after view.', stressImpact: 'Recomputed in simulated portfolio.', note: '', }])
+    setManualActions((items) => [...items, { id: crypto.randomUUID(), actionType, tickerOrBucket: ticker, dollarAmount: amount, estimatedShares: holding?.price ? amount / holding.price : undefined, beforeWeight: holding ? weight(holding.marketValue, analytics.total) : 0, afterWeight: holding ? weight(holding.marketValue + (actionType.includes('Buy') ? amount : -amount), analytics.total) : 0, reason: 'Manual sandbox action.', riskImpact: 'User-defined impact.', alignmentImpact: 'Included in simulated before/after view.', stressImpact: 'Scenario sensitivity recomputes in the simulated portfolio.', note: '', }])
   }
   return <section className="grid gap-5">
     <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
@@ -561,11 +947,17 @@ function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualAc
         <p className="text-sm leading-6 text-zinc-400">Auto-Recomp uses cash first, trims oversized concentration, reduces overexposed sleeves, and creates bucket-level allocate-here candidates when it should not name a new security.</p>
       </Panel>
     </div>
-    <div className="grid gap-5 xl:grid-cols-3">
-      <MetricCard icon={<Scales size={20} />} label="Current stress estimate" value={`${percentFmt.format(analytics.stressImpact)}%`} />
-      <MetricCard icon={<Scales size={20} />} label="Simulated stress estimate" value={`${percentFmt.format(simulatedAnalytics.stressImpact)}%`} />
-      <MetricCard icon={<ChartBar size={20} />} label="Cash remaining" value={dollarFmt.format(simulatedAnalytics.assetTotals.Cash ?? 0)} />
-    </div>
+    <Panel title="Simulation output">
+      <p className="mb-4 text-sm leading-6 text-muted">Recomp simulations are reallocations, so this view does not call the result profit or loss. Scenario sensitivity is a secondary what-if: each holding gets the scenario shock for its AI bucket first, then asset class fallback, and the weighted impacts are summed.</p>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <MetricCard icon={<Database size={20} />} label="Simulated portfolio value" value={dollarFmt.format(simulatedAnalytics.total)} hint={`Current: ${dollarFmt.format(analytics.total)}`} />
+        <MetricCard icon={<ChartBar size={20} />} label="Simulated action net change" value={dollarFmt.format(netChange)} hint={`${percentFmt.format(weight(netChange, analytics.total))}% vs current`} />
+        <MetricCard icon={<ChartBar size={20} />} label="Cash after simulation" value={dollarFmt.format(simulatedAnalytics.assetTotals.Cash ?? 0)} hint={`Before: ${dollarFmt.format(analytics.assetTotals.Cash ?? 0)}`} />
+        <MetricCard icon={<Sparkle size={20} />} label="AI exposure after simulation" value={`${percentFmt.format(simulatedAnalytics.aiExposure)}%`} hint={`Before: ${percentFmt.format(analytics.aiExposure)}%`} />
+        <MetricCard icon={<Funnel size={20} />} label="Top 10 after simulation" value={`${percentFmt.format(simulatedAnalytics.top10Weight)}%`} hint={`Before: ${percentFmt.format(analytics.top10Weight)}%`} />
+        <MetricCard icon={<Scales size={20} />} label="Stress scenario impact" value={`${percentFmt.format(simulatedAnalytics.stressImpact)}% (${dollarFmt.format(simulatedScenario)})`} hint={`Current: ${percentFmt.format(analytics.stressImpact)}% (${dollarFmt.format(currentScenario)})`} />
+      </div>
+    </Panel>
     <Panel title="Simulated trade candidate table" action={<button className="ghost" onClick={() => exportCsv('simulated-recomp-candidates.csv', allActions)}><DownloadSimple size={16} /> Export CSV</button>}>
       <ActionTable actions={allActions} />
     </Panel>
@@ -582,11 +974,49 @@ function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualAc
 function Metric({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs uppercase tracking-[0.16em] text-zinc-500">{label}</p><p className="mt-1 font-mono text-lg text-zinc-100">{value}</p></div>
 }
-function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return <div className="metric-card"><div className="text-emerald-300">{icon}</div><div><p>{label}</p><strong>{value}</strong></div></div>
+function MetricCard({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: string; hint?: string }) {
+  return <div className="metric-card"><div className="text-emerald-300">{icon}</div><div><p>{label}</p><strong>{value}</strong>{hint && <span className="metric-hint">{hint}</span>}</div></div>
 }
 function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return <section className="panel"><div className="panel-header"><h2>{title}</h2>{action}</div>{children}</section>
+}
+function NumberCell({ value, onChange, min, max, step }: { value: number; onChange: (value: number) => void; min?: number; max?: number; step?: number }) {
+  return <input className="table-input" type="number" value={Number.isFinite(value) ? value : 0} min={min} max={max} step={step} onClick={(event) => event.stopPropagation()} onChange={(event) => onChange(Number(event.target.value))} />
+}
+function TextCell({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <input className="table-input table-input-wide" value={value} onClick={(event) => event.stopPropagation()} onChange={(event) => onChange(event.target.value)} />
+}
+function SelectCell({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+  return <select className="table-input table-input-wide" value={value} onClick={(event) => event.stopPropagation()} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option}>{option}</option>)}</select>
+}
+function SortIndicator({ value }: { value: false | 'asc' | 'desc' }) {
+  return <span className="sort-indicator">{value === 'asc' ? 'Asc' : value === 'desc' ? 'Desc' : 'Sort'}</span>
+}
+function ConcentrationCutoffs({ analytics }: { analytics: ReturnType<typeof analyze> }) {
+  const cutoffs = concentrationCutoffs(analytics.topHoldings, analytics.total)
+  return <Panel title="Concentration cutoffs">
+    <div className="cutoff-grid">
+      <CutoffCard label="50% checkpoint" cutoff={cutoffs[50]} />
+      <CutoffCard label="80% checkpoint" cutoff={cutoffs[80]} />
+      <div className="cutoff-card">
+        <p>Long tail</p>
+        <strong>{cutoffs[80] ? analytics.holdings.length - cutoffs[80].rank : analytics.holdings.length} holdings</strong>
+        <span>{cutoffs[80] ? `${percentFmt.format(Math.max(0, 100 - cutoffs[80].cumulative))}% after 80% checkpoint` : 'Portfolio has no holdings yet'}</span>
+      </div>
+    </div>
+  </Panel>
+}
+function CutoffCard({ label, cutoff }: { label: string; cutoff?: { holding: Holding; rank: number; before: number; cumulative: number } }) {
+  return <div className="cutoff-card">
+    <p>{label}</p>
+    {cutoff ? <>
+      <strong>{cutoff.rank} holdings</strong>
+      <span>Reached at {cutoff.holding.ticker}, crossing {percentFmt.format(cutoff.before)}% to {percentFmt.format(cutoff.cumulative)}%.</span>
+    </> : <>
+      <strong>-</strong>
+      <span>No holdings to calculate.</span>
+    </>}
+  </div>
 }
 function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return <Panel title={title}><div className="h-80">{children}</div></Panel>
@@ -594,20 +1024,22 @@ function ChartPanel({ title, children }: { title: string; children: React.ReactN
 function WarningPanel({ warnings }: { warnings: AppWarning[] }) {
   return <Panel title="Warnings"><div className="space-y-3">{warnings.map((warning) => <div key={warning.id} className={`warning warning-${warning.severity}`}><ShieldWarning size={18} /><div><p>{warning.title}</p><span>{warning.detail}</span></div></div>)}</div></Panel>
 }
+type BarDatum = { name: string; value: number; label?: string; color?: string }
 function Donut({ data }: { data: { name: string; value: number }[] }) {
-  return <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96} paddingAngle={2}>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={tooltipStyle} /><Legend /></PieChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96} paddingAngle={2}>{data.map((item, i) => <Cell key={i} fill={chartColor(item.name, i)} stroke="var(--app-bg)" />)}</Pie><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /></PieChart></ResponsiveContainer>
 }
-function BarList({ data }: { data: { name: string; value: number }[] }) {
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 16, right: 20 }}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis type="number" stroke="#71717a" /><YAxis type="category" dataKey="name" width={150} stroke="#a1a1aa" tick={{ fontSize: 12 }} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={tooltipStyle} /><Bar dataKey="value" fill="#34d399" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
+function BarList({ data }: { data: BarDatum[] }) {
+  const hasLabels = data.some((item) => item.label)
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 8, right: hasLabels ? 112 : 20 }}><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis type="category" dataKey="name" width={132} stroke={chartAxis} tick={{ fontSize: 11 }} tickFormatter={shortChartLabel} interval={0} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} labelFormatter={(label) => String(label)} contentStyle={chartTooltip} /><Bar dataKey="value" radius={[0, 6, 6, 0]}>{data.map((item, i) => <Cell key={item.name} fill={item.color ?? chartColor(item.name, i)} />)}{hasLabels && <LabelList dataKey="label" position="right" className="bar-value-label" />}</Bar></BarChart></ResponsiveContainer>
 }
 function TargetBars({ analytics, template }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate }) {
   const data = assetClasses.map((asset) => ({ name: asset, current: weight(analytics.assetTotals[asset] ?? 0, analytics.total), target: template.targets[asset] }))
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis type="number" stroke="#71717a" /><YAxis dataKey="name" type="category" width={150} stroke="#a1a1aa" tick={{ fontSize: 12 }} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={tooltipStyle} /><Legend /><Bar dataKey="current" fill="#34d399" radius={[0, 6, 6, 0]} /><Bar dataKey="target" fill="#52525b" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis dataKey="name" type="category" width={150} stroke={chartAxis} tick={{ fontSize: 12 }} interval={0} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /><Bar dataKey="current" fill="var(--accent)" radius={[0, 6, 6, 0]} /><Bar dataKey="target" fill="var(--compare)" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
 }
 function BeforeAfter({ before, after }: { before: { name: string; value: number }[]; after: { name: string; value: number }[] }) {
   const names = Array.from(new Set([...before.map((i) => i.name), ...after.map((i) => i.name)]))
   const data = names.map((name) => ({ name, current: before.find((i) => i.name === name)?.value ?? 0, simulated: after.find((i) => i.name === name)?.value ?? 0 }))
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><XAxis type="number" stroke="#71717a" /><YAxis dataKey="name" type="category" width={150} stroke="#a1a1aa" tick={{ fontSize: 12 }} /><Tooltip contentStyle={tooltipStyle} /><Legend /><Bar dataKey="current" fill="#71717a" /><Bar dataKey="simulated" fill="#34d399" /></BarChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><XAxis type="number" stroke={chartAxis} /><YAxis dataKey="name" type="category" width={150} stroke={chartAxis} tick={{ fontSize: 12 }} interval={0} /><Tooltip contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /><Bar dataKey="current" fill="var(--compare)" /><Bar dataKey="simulated" fill="var(--accent)" /></BarChart></ResponsiveContainer>
 }
 function PreviewRows({ rows }: { rows: Record<string, unknown>[] }) {
   const keys = Object.keys(rows[0] ?? {}).slice(0, 6)
@@ -629,8 +1061,6 @@ function ActionTable({ actions }: { actions: RecompCandidate[] }) {
   return <div className="overflow-auto rounded-xl border border-white/10"><table className="data-table"><thead><tr><th>Action</th><th>Ticker / bucket</th><th>Amount</th><th>Before</th><th>After</th><th>Reason</th><th>Impact</th></tr></thead><tbody>{actions.map((action) => <tr key={action.id}><td>{action.actionType}</td><td>{action.tickerOrBucket}</td><td>{dollarFmt.format(action.dollarAmount)}</td><td>{percentFmt.format(action.beforeWeight)}%</td><td>{percentFmt.format(action.afterWeight)}%</td><td>{action.reason}</td><td>{action.alignmentImpact}</td></tr>)}</tbody></table></div>
 }
 
-const tooltipStyle = { background: '#18181b', border: '1px solid rgba(255,255,255,.1)', color: '#f4f4f5', borderRadius: 12 }
-
 function analyze(holdings: Holding[], template: StrategyTemplate, stress: StressScenario, minDollar: number, minWeight: number) {
   const total = holdings.reduce((sum, h) => sum + h.marketValue, 0)
   const assetTotals = sumBy(holdings, (h) => h.assetClass)
@@ -651,7 +1081,7 @@ function analyze(holdings: Holding[], template: StrategyTemplate, stress: Stress
   const top10Weight = weight(topHoldings.slice(0, 10).reduce((sum, h) => sum + h.marketValue, 0), total)
   const largestWeight = weight(topHoldings[0]?.marketValue ?? 0, total)
   const riskScore = holdings.reduce((sum, h) => sum + weight(h.marketValue, total) / 100 * riskMultiplier(h), 0)
-  const stressImpact = holdings.reduce((sum, h) => sum + weight(h.marketValue, total) / 100 * shockFor(h, stress), 0) * 100
+  const stressImpact = holdings.reduce((sum, h) => sum + weight(h.marketValue, total) / 100 * shockFor(h, stress), 0)
   const assetClassData = toPercentData(assetTotals, total)
   const sectorData = toPercentData(sectorTotals, total)
   const aiBucketData = toPercentData(aiBucketTotals, aiValue || total)
@@ -700,27 +1130,40 @@ function buildRecompCandidates(analytics: ReturnType<typeof analyze>, template: 
   return actions.slice(0, 12)
 }
 function candidate(actionType: ActionType, tickerOrBucket: string, dollarAmount: number, beforeWeight: number, afterWeight: number, reason: string, price?: number): RecompCandidate {
-  return { id: crypto.randomUUID(), actionType, tickerOrBucket, dollarAmount, estimatedShares: price ? dollarAmount / price : undefined, beforeWeight, afterWeight, reason, riskImpact: 'Estimated risk-budget contribution recalculates in the simulated view.', alignmentImpact: 'Moves closer to selected template guardrails.', stressImpact: 'Stress-test estimate updates after applying this simulated action.', warning: actionType.includes('Buy') && afterWeight > beforeWeight ? 'Check concentration before acting.' : undefined }
+  return { id: crypto.randomUUID(), actionType, tickerOrBucket, dollarAmount, estimatedShares: price ? dollarAmount / price : undefined, beforeWeight, afterWeight, reason, riskImpact: 'Estimated risk-budget contribution recalculates in the simulated view.', alignmentImpact: 'Moves closer to selected template guardrails.', stressImpact: 'Scenario sensitivity updates after applying this simulated action.', warning: actionType.includes('Buy') && afterWeight > beforeWeight ? 'Check concentration before acting.' : undefined }
 }
 function simulateCandidates(holdings: Holding[], actions: RecompCandidate[]) {
-  const simulated = holdings.map((h) => ({ ...h }))
+  const simulated = holdings.map(cloneHolding)
   actions.forEach((action) => {
     const item = simulated.find((h) => h.ticker === action.tickerOrBucket)
     if (!item) return
     const direction = action.actionType.includes('Buy') ? 1 : -1
-    item.marketValue = Math.max(0, item.marketValue + direction * action.dollarAmount)
+    const amount = direction < 0 ? Math.min(action.dollarAmount, item.marketValue) : action.dollarAmount
+    item.marketValue = Math.max(0, item.marketValue + direction * amount)
     if (item.price) item.shares = item.marketValue / item.price
+    if (item.assetClass !== 'Cash') adjustCash(simulated, direction < 0 ? amount : -amount)
   })
   return simulated.filter((h) => h.marketValue > 1)
+}
+function adjustCash(holdings: Holding[], amount: number) {
+  const cash = holdings.find((holding) => holding.assetClass === 'Cash')
+  if (!cash) {
+    if (amount > 0) holdings.push({ id: `simulation-cash-${crypto.randomUUID()}`, accountId: 'simulation', accountOwner: 'Portfolio', accountName: 'Simulation cash', accountType: 'Cash', accountCategory: 'Cash', ticker: 'CASH', securityName: 'Simulation cash', shares: amount, price: 1, marketValue: amount, assetClass: 'Cash', sector: 'Cash & equivalents', ai: ai('Broad passive index exposure', 0, 'none'), notes: 'Created by simulation offset.' })
+    return
+  }
+  cash.marketValue = Math.max(0, cash.marketValue + amount)
+  cash.shares = cash.price ? cash.marketValue / cash.price : cash.marketValue
 }
 function normalizeImportedRow(row: Record<string, unknown>, accountOwner: string, accountName: string, accountType: string, index: number): Holding | null {
   const ticker = clean(row.Symbol ?? row.Ticker ?? row.ticker)
   const marketValue = parseMoney(row['Mkt Val (Market Value)'] ?? row.market_value ?? row['Market Value'])
+  if (!ticker || ticker.toLowerCase().includes('positions total') || ticker.toLowerCase() === 'no number') return null
   if (!ticker || !Number.isFinite(marketValue) || marketValue <= 0) return null
   const shares = parseMoney(row['Qty (Quantity)'] ?? row.shares ?? row.Quantity) || 0
   const price = parseMoney(row.Price)
   const defaults = defaultClassifications[ticker] ?? {}
-  return { id: `${accountName}-${ticker}-${index}-${crypto.randomUUID()}`, accountOwner, accountName: accountName.replace(/^Positions for account\s*/i, ''), accountType, ticker, securityName: clean(row.Description ?? row.security_name ?? row.Name) || ticker, shares, price, marketValue, assetClass: (defaults.assetClass as AssetClass) ?? assetFromRaw(clean(row['Asset Type'])), sector: defaults.sector ?? 'Unclassified', ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' }, costBasis: parseMoney(row['Cost Basis']), unrealizedGainLoss: parseMoney(row['Gain $ (Gain/Loss $)']) }
+  const normalizedAccountName = accountName.replace(/^Positions for account\s*/i, '')
+  return { id: `${accountName}-${ticker}-${index}-${crypto.randomUUID()}`, accountId: slug(normalizedAccountName), accountOwner, accountName: normalizedAccountName, accountType, accountCategory: detectAccountType(normalizedAccountName), ticker, securityName: clean(row.Description ?? row.security_name ?? row.Name) || ticker, shares, price, marketValue, assetClass: (defaults.assetClass as AssetClass) ?? assetFromRaw(clean(row['Asset Type'])), sector: defaults.sector ?? 'Unclassified', ai: (defaults.ai as AIExposureClassification) ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' }, costBasis: parseMoney(row['Cost Basis']), unrealizedGainLoss: parseMoney(row['Gain $ (Gain/Loss $)']) }
 }
 function compareSnapshots(a: PortfolioSnapshot, b: PortfolioSnapshot) {
   const mapA = sumBy(a.holdings, (h) => h.ticker)
@@ -741,10 +1184,208 @@ function sumBy(holdings: Holding[], key: (h: Holding) => string): Record<string,
 function toPercentData(totals: Record<string, number>, total: number) {
   return Object.entries(totals).map(([name, value]) => ({ name, value: weight(value, total) })).sort((a, b) => b.value - a.value)
 }
+function compactChartData(data: { name: string; value: number }[], limit: number) {
+  if (data.length <= limit) return data
+  const head = data.slice(0, limit - 1)
+  const other = data.slice(limit - 1).reduce((sum, item) => sum + item.value, 0)
+  return [...head, { name: 'Other AI buckets', value: other }]
+}
+function holdingBarData(holdings: Holding[], total: number): BarDatum[] {
+  return holdings.map((holding) => {
+    const pct = weight(holding.marketValue, total)
+    return {
+      name: holding.ticker,
+      value: pct,
+      label: `${percentFmt.format(pct)}% · ${compactDollar(holding.marketValue)}`,
+      color: holdingColor(holding),
+    }
+  })
+}
+function cumulativeWeights(holdings: Holding[], total: number) {
+  let cumulative = 0
+  const values = new Map<string, number>()
+  holdings.forEach((holding) => {
+    cumulative += weight(holding.marketValue, total)
+    values.set(holding.id, cumulative)
+  })
+  return values
+}
+function concentrationCutoffs(holdings: Holding[], total: number) {
+  const result: Partial<Record<50 | 80, { holding: Holding; rank: number; before: number; cumulative: number }>> = {}
+  let cumulative = 0
+  holdings.forEach((holding, index) => {
+    const before = cumulative
+    cumulative += weight(holding.marketValue, total)
+    if (!result[50] && cumulative >= 50) result[50] = { holding, rank: index + 1, before, cumulative }
+    if (!result[80] && cumulative >= 80) result[80] = { holding, rank: index + 1, before, cumulative }
+  })
+  return result
+}
+function compactDollar(value: number) {
+  if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
+  if (Math.abs(value) >= 1_000) return `$${Math.round(value / 1_000)}K`
+  return dollarFmt.format(value)
+}
+function holdingColor(holding: Holding) {
+  if (holding.assetClass === 'Cash') return semanticColors.cash
+  if (holding.assetClass === 'Bonds/fixed income') return semanticColors.bonds
+  if (isBroadIndexHolding(holding)) return semanticColors.index
+  if (holding.ai.score > 0) return semanticColors.ai
+  if (holding.assetClass === 'International equity') return semanticColors.international
+  if (holding.assetClass === 'Broad US equity') return semanticColors.equity
+  if (holding.assetClass === 'Alternatives/other') return semanticColors.alternatives
+  return semanticColors.other
+}
+function isBroadIndexHolding(holding: Holding) {
+  const text = `${holding.ticker} ${holding.securityName} ${holding.sector}`.toLowerCase()
+  return holding.assetClass === 'Broad US equity' && (holding.sector === 'Broad Market' || /\b(index|s&p|nasdaq|dow|total stock|equal weight|dividend aristocrats|covered call|vanguard|spdr|invesco qqq)\b/.test(text))
+}
+function chartColor(name: string, index: number) {
+  const lower = name.toLowerCase()
+  if (assetClasses.includes(name as AssetClass)) return assetClassColors[name as AssetClass]
+  if (aiBuckets.includes(name as AIBucket)) return name === 'Broad passive index exposure' ? semanticColors.index : semanticColors.ai
+  if (lower.includes('cash') || lower.includes('money market')) return semanticColors.cash
+  if (lower.includes('broad us') || lower.includes('broad passive') || lower.includes('index') || lower.includes('s&p') || lower.includes('nasdaq')) return semanticColors.index
+  if (lower.includes('bond') || lower.includes('fixed income')) return semanticColors.bonds
+  if (lower.includes('international') || lower.includes('emerging')) return semanticColors.international
+  if (lower.includes('ai') || lower.includes('semiconductor') || lower.includes('gpu') || lower.includes('data center') || lower.includes('grid') || lower.includes('power') || lower.includes('cooling') || lower.includes('networking') || lower.includes('photonics')) return semanticColors.ai
+  if (lower.includes('alternative') || lower.includes('energy') || lower.includes('digital')) return semanticColors.alternatives
+  return colors[index % colors.length]
+}
+function aggregateHoldingsForView(holdings: Holding[]): Holding[] {
+  const groups = new Map<string, Holding[]>()
+  holdings.forEach((holding) => {
+    const key = holding.ticker.toUpperCase()
+    groups.set(key, [...(groups.get(key) ?? []), holding])
+  })
+  return Array.from(groups.entries()).map(([ticker, group]) => {
+    if (group.length === 1) return cloneHolding(group[0])
+    const totalValue = group.reduce((sum, holding) => sum + holding.marketValue, 0)
+    const shares = group.reduce((sum, holding) => sum + holding.shares, 0)
+    const dominant = [...group].sort((a, b) => b.marketValue - a.marketValue)[0]
+    return {
+      ...cloneHolding(dominant),
+      id: `view-${ticker}-${group.map((holding) => holding.id).sort().join('-')}`,
+      sourceHoldingIds: group.map((holding) => holding.id),
+      accountId: group.map((holding) => holding.accountId).join('|'),
+      accountName: uniqueText(group.map((holding) => holding.accountName)).join(' + '),
+      accountType: uniqueText(group.map((holding) => holding.accountType)).join(' + '),
+      accountCategory: uniqueText(group.map((holding) => holding.accountCategory)).join(' + '),
+      ticker,
+      securityName: dominant.securityName,
+      shares,
+      price: shares ? totalValue / shares : dominant.price,
+      marketValue: totalValue,
+      assetClass: dominantByValue(group, (holding) => holding.assetClass) as AssetClass,
+      sector: dominantByValue(group, (holding) => holding.sector),
+      ai: aggregateAI(group),
+      costBasis: group.reduce((sum, holding) => sum + (holding.costBasis ?? 0), 0),
+      unrealizedGainLoss: group.reduce((sum, holding) => sum + (holding.unrealizedGainLoss ?? 0), 0),
+      notes: uniqueText(group.map((holding) => holding.notes).filter(Boolean) as string[]).join(' | '),
+    }
+  }).sort((a, b) => b.marketValue - a.marketValue)
+}
+function aggregateAI(holdings: Holding[]): AIExposureClassification {
+  const total = holdings.reduce((sum, holding) => sum + holding.marketValue, 0)
+  const score = total ? holdings.reduce((sum, holding) => sum + holding.marketValue * holding.ai.score, 0) / total : 0
+  const bucketValues: Record<string, number> = {}
+  const directnessValues: Record<string, number> = {}
+  holdings.forEach((holding) => {
+    const aiValue = holding.marketValue * (holding.ai.score / 5)
+    directnessValues[holding.ai.directness] = (directnessValues[holding.ai.directness] ?? 0) + aiValue
+    holding.ai.buckets.forEach((bucket) => {
+      bucketValues[bucket.bucket] = (bucketValues[bucket.bucket] ?? 0) + aiValue * (bucket.weight / 100)
+    })
+  })
+  const bucketTotal = Object.values(bucketValues).reduce((sum, value) => sum + value, 0)
+  const buckets = bucketTotal ? Object.entries(bucketValues).map(([bucket, value]) => ({ bucket: bucket as AIBucket, weight: weight(value, bucketTotal) })).sort((a, b) => b.weight - a.weight) : [{ bucket: 'Broad passive index exposure' as AIBucket, weight: 100 }]
+  const directness = Object.entries(directnessValues).sort((a, b) => b[1] - a[1])[0]?.[0] as Directness | undefined
+  return {
+    score,
+    buckets,
+    directness: directness ?? 'none',
+    confidence: holdings.some((holding) => holding.ai.confidence === 'low') ? 'low' : holdings.some((holding) => holding.ai.confidence === 'medium') ? 'medium' : 'high',
+    source: holdings.some((holding) => holding.ai.source === 'manual') ? 'manual' : holdings.some((holding) => holding.ai.source === 'imported') ? 'imported' : holdings.some((holding) => holding.ai.source === 'default') ? 'default' : 'unknown',
+    notes: uniqueText(holdings.map((holding) => holding.ai.notes).filter(Boolean)).join(' | '),
+  }
+}
+function dominantByValue(holdings: Holding[], key: (holding: Holding) => string) {
+  const totals = new Map<string, number>()
+  holdings.forEach((holding) => totals.set(key(holding), (totals.get(key(holding)) ?? 0) + holding.marketValue))
+  return Array.from(totals.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+}
+function uniqueText(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)))
+}
+function cloneHolding(holding: Holding): Holding {
+  return { ...holding, ai: { ...holding.ai, buckets: [...holding.ai.buckets] } }
+}
+function applyHoldingEditOverlay(holdings: Holding[], overlay: Record<string, Partial<Holding>>) {
+  return holdings.map((holding) => {
+    const edit = overlay[holding.id]
+    if (!edit) return cloneHolding(holding)
+    return {
+      ...cloneHolding(holding),
+      ...edit,
+      ai: edit.ai ? { ...holding.ai, ...edit.ai, buckets: edit.ai.buckets ? [...edit.ai.buckets] : [...holding.ai.buckets] } : { ...holding.ai, buckets: [...holding.ai.buckets] },
+    }
+  })
+}
+function isHoldingEdited(id: string, overlay: Record<string, Partial<Holding>>) {
+  return Boolean(overlay[id])
+}
+function holdingEditedInView(holding: Holding, overlay: Record<string, Partial<Holding>>) {
+  return (holding.sourceHoldingIds ?? [holding.id]).some((id) => isHoldingEdited(id, overlay))
+}
+function repriceHolding(holding: Holding): Holding {
+  if (!holding.price || !holding.shares) return holding
+  return { ...holding, marketValue: holding.shares * holding.price }
+}
+function warningStatus(holding: Holding, total: number, minDollar: number, maxSingle: number) {
+  return holding.marketValue < minDollar ? 'Nuisance' : weight(holding.marketValue, total) > maxSingle ? 'High concentration' : holding.ai.source === 'unknown' ? 'Missing AI data' : 'Clear'
+}
+function scenarioImpactDollars(analytics: ReturnType<typeof analyze>) {
+  return analytics.total * (analytics.stressImpact / 100)
+}
+function shortChartLabel(value: string) {
+  return value
+    .replace('Big tech / hyperscalers', 'Big tech')
+    .replace('AI platforms / AI software', 'AI software')
+    .replace('Broad passive index exposure', 'Broad index')
+    .replace('Public indirect AI lab exposure', 'AI lab indirect')
+    .replace('Data centers / colocation', 'Data centers')
+    .replace('Cooling / thermal management', 'Cooling')
+    .replace('Semiconductor equipment', 'Semi equip.')
+    .replace('Grid / electrification', 'Grid')
+}
 function weight(value: number, total: number) { return total ? (value / total) * 100 : 0 }
 function parseMoney(value: unknown) { const cleanValue = String(value ?? '').replace(/[$,%"]/g, '').replace(/,/g, '').trim(); const parsed = Number(cleanValue); return Number.isFinite(parsed) ? parsed : 0 }
 function clean(value: unknown) { return String(value ?? '').replaceAll('"', '').trim() }
 function assetFromRaw(raw: string): AssetClass { return raw.toLowerCase().includes('cash') ? 'Cash' : raw.toLowerCase().includes('bond') ? 'Bonds/fixed income' : 'Broad US equity' }
+function stressExplanation(scenario: StressScenario) {
+  return `Scenario sensitivity applies this scenario's simple shocks to each holding by AI bucket first, then asset class fallback, and sums the weighted impact. It is a what-if comparison tool, not a forecast, volatility model, or institutional risk system. Current scenario: ${scenario.name}.`
+}
+function assetShortLabel(asset: AssetClass) {
+  return {
+    'Broad US equity': 'US',
+    'AI buildout sleeve': 'AI',
+    'International equity': 'Intl',
+    'Bonds/fixed income': 'Bonds',
+    Cash: 'Cash',
+    'Alternatives/other': 'Alt',
+  }[asset]
+}
+function summarizeStagedAccounts(rows: Record<string, unknown>[]) {
+  const summaries = new Map<string, { id: string; name: string; type: string; rows: number; value: number }>()
+  rows.forEach((row) => {
+    const id = String(row.__accountId ?? 'unknown-account')
+    const current = summaries.get(id) ?? { id, name: String(row.__accountName ?? 'Uploaded account'), type: String(row.__accountType ?? 'Unknown account'), rows: 0, value: 0 }
+    current.rows += 1
+    current.value += parseMoney(row['Mkt Val (Market Value)'] ?? row.market_value ?? row['Market Value'])
+    summaries.set(id, current)
+  })
+  return Array.from(summaries.values()).sort((a, b) => b.value - a.value)
+}
 function riskMultiplier(h: Holding) {
   if (h.assetClass === 'Cash') return 0
   if (h.assetClass === 'Bonds/fixed income') return 0.3
@@ -765,15 +1406,64 @@ function exportCsv(name: string, rows: unknown[]) {
 }
 function exportJson(name: string, data: unknown) { download(name, new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })) }
 function download(name: string, blob: Blob) { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url) }
+function slug(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'unknown-account' }
+function detectAccountType(value: string) {
+  const text = value.toLowerCase()
+  if (text.includes('401k') || text.includes('401(k)')) return '401k'
+  if (text.includes('sep')) return 'SEP IRA'
+  if (text.includes('simple')) return 'SIMPLE IRA'
+  if (text.includes('rollover')) return 'Rollover IRA'
+  if (text.includes('roth')) return 'Roth IRA'
+  if (text.includes('traditional') || /\bira\b/.test(text)) return 'Traditional IRA'
+  if (text.includes('hsa')) return 'HSA'
+  if (text.includes('trust')) return 'Trust'
+  if (text.includes('taxable') || text.includes('brokerage') || text.includes('joint')) return 'Taxable'
+  if (text.includes('db plan') || text.includes('pension')) return 'Defined benefit plan'
+  return 'Unknown account'
+}
+function detectAccountFromText(preamble: string, filename: string) {
+  const stripped = preamble.replaceAll('"', '').trim()
+  const match = stripped.match(/Positions for account\s+(.+?)\s+as of/i)
+  const rawName = match?.[1] ?? filename.replace(/\.(csv|xlsx|xls)$/i, '').replace(/-Positions-.+$/i, '')
+  const name = rawName.replace(/\s*\.\.\.\d+\s*/g, '').trim() || 'Uploaded account'
+  return { id: slug(name), name, type: detectAccountType(name) }
+}
+function detectAsOfDate(preamble: string) {
+  const match = preamble.match(/as of .*?,\s*(\d{4})\/(\d{2})\/(\d{2})/i)
+  if (!match) return ''
+  return `${match[1]}-${match[2]}-${match[3]}`
+}
+function accountScopes(holdings: Holding[]) {
+  const accounts = Array.from(new Map(holdings.map((holding) => [holding.accountId, holding])).values())
+  return [{ id: 'combined', label: 'Combined portfolio' }, ...accounts.map((holding) => ({ id: holding.accountId, label: `${holding.accountName} · ${holding.accountCategory || holding.accountType}` }))]
+}
+function resolveTheme(theme: ThemePreference) {
+  if (theme !== 'system') return theme
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
 function loadState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey) || '{}')
-    return { snapshots: parsed.snapshots?.length ? parsed.snapshots : sampleSnapshots(), selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], decisionLog: parsed.decisionLog ?? [] }
+    const snapshots = parsed.snapshots?.length ? parsed.snapshots.map((snapshot: PortfolioSnapshot) => ({ ...snapshot, holdings: snapshot.holdings.map(migrateHolding).filter((holding): holding is Holding => Boolean(holding)) })) : sampleSnapshots()
+    return { snapshots, selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedAccountScope: parsed.selectedAccountScope ?? 'combined', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', customTemplates: parsed.customTemplates ?? [], themePreference: parsed.themePreference ?? 'system', ledgerMode: parsed.ledgerMode ?? 'uploaded', holdingEditOverlay: parsed.holdingEditOverlay ?? {}, hiddenHoldingIds: parsed.hiddenHoldingIds ?? [], recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], decisionLog: parsed.decisionLog ?? [] }
   } catch {
-    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedTemplateId: 'diversified-ai-supply-chain', recompCandidates: [], manualActions: [], decisionLog: [] }
+    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedAccountScope: 'combined', selectedTemplateId: 'diversified-ai-supply-chain', customTemplates: [], themePreference: 'system' as ThemePreference, ledgerMode: 'uploaded' as LedgerMode, holdingEditOverlay: {}, hiddenHoldingIds: [], recompCandidates: [], manualActions: [], decisionLog: [] }
   }
 }
-function persist(state: { snapshots: PortfolioSnapshot[]; selectedSnapshotId: string; selectedTemplateId: string; recompCandidates: RecompCandidate[]; manualActions: ManualSandboxAction[]; decisionLog: DecisionLogEntry[] }) {
+function migrateHolding(holding: Holding): Holding | null {
+  if (!holding.ticker || holding.ticker.toLowerCase().includes('positions total') || holding.ticker.toLowerCase() === 'no number') return null
+  const defaults = defaultClassifications[holding.ticker] ?? {}
+  const aiDefault = defaults.ai as AIExposureClassification | undefined
+  return {
+    ...holding,
+    accountId: holding.accountId ?? slug(holding.accountName),
+    accountCategory: holding.accountCategory ?? detectAccountType(holding.accountName),
+    assetClass: (defaults.assetClass as AssetClass | undefined) ?? holding.assetClass,
+    sector: (defaults.sector as string | undefined) ?? holding.sector,
+    ai: holding.ai?.source === 'manual' ? holding.ai : aiDefault ?? holding.ai ?? { score: 0, buckets: [], directness: 'none', confidence: 'low', source: 'unknown', notes: '' },
+  }
+}
+function persist(state: PersistedState) {
   localStorage.setItem(storageKey, JSON.stringify(state))
 }
 
