@@ -154,6 +154,7 @@ type PersistedState = {
   selectedSnapshotId: string
   selectedAccountScope: string
   selectedTemplateId: string
+  customTemplates: StrategyTemplate[]
   themePreference: ThemePreference
   hiddenHoldingIds: string[]
   recompCandidates: RecompCandidate[]
@@ -183,7 +184,15 @@ const aiBuckets: AIBucket[] = [
   'Robotics / automation',
   'Broad passive index exposure',
 ]
-const colors = ['#34d399', '#60a5fa', '#a7f3d0', '#fbbf24', '#d1d5db', '#94a3b8', '#f87171', '#22d3ee']
+const colors = ['#047857', '#6b7280', '#2563eb', '#b45309', '#0f766e', '#7c3aed', '#be123c', '#475569']
+const chartAxis = 'var(--chart-axis)'
+const chartGrid = 'var(--chart-grid)'
+const chartTooltip = {
+  background: 'var(--tooltip-bg)',
+  border: '1px solid var(--border)',
+  color: 'var(--app-text)',
+  borderRadius: 12,
+}
 const defaultClassifications: Record<string, Partial<Holding>> = {
   AAPL: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('AI platforms / AI software', 4, 'direct') },
   MSFT: { assetClass: 'AI buildout sleeve', sector: 'Information Technology', ai: ai('Big tech / hyperscalers', 5, 'direct', [{ bucket: 'Public indirect AI lab exposure', weight: 25 }]) },
@@ -310,6 +319,7 @@ function App() {
   const [selectedAccountScope, setSelectedAccountScope] = useState(persisted.selectedAccountScope)
   const [activeTab, setActiveTab] = useState('Overview')
   const [selectedTemplateId, setSelectedTemplateId] = useState(persisted.selectedTemplateId)
+  const [customTemplates, setCustomTemplates] = useState<StrategyTemplate[]>(persisted.customTemplates)
   const [themePreference, setThemePreference] = useState<ThemePreference>(persisted.themePreference)
   const [selectedStressId, setSelectedStressId] = useState('ai-disappointment')
   const [recompCandidates, setRecompCandidates] = useState<RecompCandidate[]>(persisted.recompCandidates)
@@ -335,7 +345,8 @@ function App() {
     return scoped.filter((holding) => !hiddenHoldingIds.includes(holding.id))
   }, [currentSnapshot.holdings, hiddenHoldingIds, selectedAccountScope])
   const hiddenHoldings = currentSnapshot.holdings.filter((holding) => hiddenHoldingIds.includes(holding.id))
-  const template = strategyTemplates.find((item) => item.id === selectedTemplateId) ?? strategyTemplates[0]
+  const allTemplates = useMemo(() => [...strategyTemplates, ...customTemplates], [customTemplates])
+  const template = allTemplates.find((item) => item.id === selectedTemplateId) ?? strategyTemplates[0]
   const stress = stressScenarios.find((item) => item.id === selectedStressId) ?? stressScenarios[2]
   const analytics = useMemo(() => analyze(scopedHoldings, template, stress, minDollar, minWeight), [scopedHoldings, template, stress, minDollar, minWeight])
   const simulated = useMemo(() => simulateCandidates(scopedHoldings, [...recompCandidates, ...manualActions]), [scopedHoldings, recompCandidates, manualActions])
@@ -347,8 +358,8 @@ function App() {
   }, [themePreference])
 
   useEffect(() => {
-    persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedAccountScope, selectedTemplateId: template.id, themePreference, hiddenHoldingIds, recompCandidates, manualActions, decisionLog })
-  }, [currentSnapshot.id, decisionLog, hiddenHoldingIds, manualActions, recompCandidates, selectedAccountScope, snapshots, template.id, themePreference])
+    persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedAccountScope, selectedTemplateId: template.id, customTemplates, themePreference, hiddenHoldingIds, recompCandidates, manualActions, decisionLog })
+  }, [currentSnapshot.id, customTemplates, decisionLog, hiddenHoldingIds, manualActions, recompCandidates, selectedAccountScope, snapshots, template.id, themePreference])
 
   const columns = useMemo<ColumnDef<Holding>[]>(() => [
     { accessorKey: 'ticker', header: 'Ticker' },
@@ -461,8 +472,8 @@ function App() {
           ))}
         </nav>
 
-        {activeTab === 'Overview' && <Overview analytics={analytics} template={template} stress={stress} setTemplate={setSelectedTemplateId} setStress={setSelectedStressId} generateCandidates={generateCandidates} />}
-        {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} message={importMessage} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
+        {activeTab === 'Overview' && <Overview analytics={analytics} template={template} templates={allTemplates} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} stress={stress} setTemplate={setSelectedTemplateId} setStress={setSelectedStressId} generateCandidates={generateCandidates} />}
+        {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} setRows={setImportRows} message={importMessage} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
         {activeTab === 'X-Ray & Concentration' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} hideHolding={(id) => setHiddenHoldingIds((items) => [...new Set([...items, id])])} hiddenHoldings={hiddenHoldings} unhideHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} />}
         {activeTab === 'AI Buildout' && <AIBuildout analytics={analytics} current={currentSnapshot} selectedHolding={selectedHolding} setSelectedHoldingId={setSelectedHoldingId} updateHolding={updateHolding} />}
         {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={currentSnapshot.holdings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
@@ -475,7 +486,12 @@ function App() {
   )
 }
 
-function Overview({ analytics, template, stress, setTemplate, setStress, generateCandidates }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate; stress: StressScenario; setTemplate: (id: string) => void; setStress: (id: string) => void; generateCandidates: () => void }) {
+function Overview({ analytics, template, templates, customTemplates, setCustomTemplates, stress, setTemplate, setStress, generateCandidates }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate; templates: StrategyTemplate[]; customTemplates: StrategyTemplate[]; setCustomTemplates: React.Dispatch<React.SetStateAction<StrategyTemplate[]>>; stress: StressScenario; setTemplate: (id: string) => void; setStress: (id: string) => void; generateCandidates: () => void }) {
+  function duplicateTemplate() {
+    const copy = { ...template, id: `custom-${crypto.randomUUID()}`, name: `${template.name} custom`, targets: { ...template.targets }, pros: [...template.pros], cons: [...template.cons], warningLabel: 'Custom planning profile' }
+    setCustomTemplates((items) => [...items, copy])
+    setTemplate(copy.id)
+  }
   return <section className="grid gap-5">
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
       <MetricCard icon={<Database size={20} />} label="Total portfolio value" value={dollarFmt.format(analytics.total)} />
@@ -487,12 +503,17 @@ function Overview({ analytics, template, stress, setTemplate, setStress, generat
     <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
       <Panel title="Strategy templates" action={<button className="primary" onClick={generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
         <div className="template-grid">
-          {strategyTemplates.map((item) => <TemplateCard key={item.id} template={item} analytics={analytics} selected={item.id === template.id} onSelect={() => setTemplate(item.id)} />)}
+          {templates.map((item) => <TemplateCard key={item.id} template={item} analytics={analytics} selected={item.id === template.id} onSelect={() => setTemplate(item.id)} />)}
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           <div className="rounded-xl border border-app bg-soft p-3"><p className="section-label mb-2">30-second read</p><p className="text-sm leading-6 text-app">{executiveSummary(analytics, template)}</p></div>
-          <label className="field"><span>Stress scenario</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <div className="rounded-xl border border-app bg-soft p-3">
+            <label className="field"><span>Stress scenario</span><select className="control" value={stress.id} onChange={(event) => setStress(event.target.value)}>{stressScenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <p className="mt-3 text-sm leading-6 text-muted">{stressExplanation(stress)}</p>
+            <StressShockList scenario={stress} />
+          </div>
         </div>
+        <TemplateEditor template={template} isCustom={template.id.startsWith('custom-')} customTemplates={customTemplates} setCustomTemplates={setCustomTemplates} setTemplate={setTemplate} duplicateTemplate={duplicateTemplate} />
       </Panel>
       <WarningPanel warnings={analytics.warnings} />
     </div>
@@ -506,6 +527,34 @@ function Overview({ analytics, template, stress, setTemplate, setStress, generat
   </section>
 }
 
+function StressShockList({ scenario }: { scenario: StressScenario }) {
+  return <div className="stress-list">{Object.entries(scenario.shocks).map(([name, value]) => <span key={name}>{name}: <strong>{value && value > 0 ? '+' : ''}{value}%</strong></span>)}</div>
+}
+
+function TemplateEditor({ template, isCustom, customTemplates, setCustomTemplates, setTemplate, duplicateTemplate }: { template: StrategyTemplate; isCustom: boolean; customTemplates: StrategyTemplate[]; setCustomTemplates: React.Dispatch<React.SetStateAction<StrategyTemplate[]>>; setTemplate: (id: string) => void; duplicateTemplate: () => void }) {
+  function updateCustom(next: StrategyTemplate) {
+    setCustomTemplates((items) => items.map((item) => item.id === next.id ? next : item))
+  }
+  return <div className="template-editor">
+    <div>
+      <h3>{isCustom ? 'Edit custom template' : 'Make your own template'}</h3>
+      <p>{isCustom ? 'Adjust targets and guardrails. Changes are saved locally in this browser.' : 'Default profiles are locked. Duplicate one to create a local editable template.'}</p>
+    </div>
+    {!isCustom ? <button className="ghost" onClick={duplicateTemplate}>Duplicate selected template</button> : <div className="grid gap-3">
+      <label className="field"><span>Template name</span><input className="control" value={template.name} onChange={(event) => updateCustom({ ...template, name: event.target.value })} /></label>
+      <div className="custom-target-grid">
+        {assetClasses.map((asset) => <label key={asset} className="field"><span>{assetShortLabel(asset)} target %</span><input className="control" type="number" min={0} max={100} value={template.targets[asset]} onChange={(event) => updateCustom({ ...template, targets: { ...template.targets, [asset]: Number(event.target.value) } })} /></label>)}
+      </div>
+      <div className="custom-target-grid">
+        <label className="field"><span>Max single %</span><input className="control" type="number" value={template.maxSingle} onChange={(event) => updateCustom({ ...template, maxSingle: Number(event.target.value) })} /></label>
+        <label className="field"><span>Max top 10 %</span><input className="control" type="number" value={template.maxTop10} onChange={(event) => updateCustom({ ...template, maxTop10: Number(event.target.value) })} /></label>
+        <label className="field"><span>Max AI bucket %</span><input className="control" type="number" value={template.maxBucket} onChange={(event) => updateCustom({ ...template, maxBucket: Number(event.target.value) })} /></label>
+      </div>
+      <button className="ghost justify-self-start" onClick={() => { setCustomTemplates(customTemplates.filter((item) => item.id !== template.id)); setTemplate(strategyTemplates[0].id) }}>Delete custom template</button>
+    </div>}
+  </div>
+}
+
 function TemplateCard({ template, analytics, selected, onSelect }: { template: StrategyTemplate; analytics: ReturnType<typeof analyze>; selected: boolean; onSelect: () => void }) {
   const drift = assetClasses.reduce((sum, asset) => sum + Math.abs(weight(analytics.assetTotals[asset] ?? 0, analytics.total) - template.targets[asset]), 0)
   return <button className={`template-card ${selected ? 'template-card-selected' : ''}`} onClick={onSelect}>
@@ -516,8 +565,11 @@ function TemplateCard({ template, analytics, selected, onSelect }: { template: S
       </div>
       <span className="template-pill">{template.targets['AI buildout sleeve']}% AI</span>
     </div>
-    <div className="allocation-strip" aria-hidden="true">
-      {assetClasses.map((asset, index) => <span key={asset} style={{ width: `${template.targets[asset]}%`, backgroundColor: colors[index % colors.length] }} />)}
+    <div className="allocation-strip" aria-label={`${template.name} allocation mix`}>
+      {assetClasses.map((asset, index) => <span key={asset} title={`${asset}: ${template.targets[asset]}%`} style={{ width: `${template.targets[asset]}%`, backgroundColor: colors[index % colors.length] }} />)}
+    </div>
+    <div className="allocation-legend">
+      {assetClasses.map((asset, index) => <span key={asset}><i style={{ backgroundColor: colors[index % colors.length] }} />{assetShortLabel(asset)} {template.targets[asset]}%</span>)}
     </div>
     <div className="template-stats">
       <span>Drawdown <strong>{template.drawdownRange}</strong></span>
@@ -532,10 +584,11 @@ function TemplateCard({ template, analytics, selected, onSelect }: { template: S
   </button>
 }
 
-function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: PortfolioSnapshot; rows: Record<string, unknown>[]; message: string; accountOwner: string; accountType: string; setAccountOwner: (v: string) => void; setAccountType: (v: string) => void; parseUpload: (files: FileList | File) => void; saveImportSnapshot: () => void; setSnapshots: React.Dispatch<React.SetStateAction<PortfolioSnapshot[]>>; setSelectedSnapshotId: (id: string) => void; generateCandidates: () => void }) {
+function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: PortfolioSnapshot; rows: Record<string, unknown>[]; setRows: React.Dispatch<React.SetStateAction<Record<string, unknown>[]>>; message: string; accountOwner: string; accountType: string; setAccountOwner: (v: string) => void; setAccountType: (v: string) => void; parseUpload: (files: FileList | File) => void; saveImportSnapshot: () => void; setSnapshots: React.Dispatch<React.SetStateAction<PortfolioSnapshot[]>>; setSelectedSnapshotId: (id: string) => void; generateCandidates: () => void }) {
   const latest = props.snapshots.at(-1)
   const previous = props.snapshots.at(-2)
   const comparison = latest && previous ? compareSnapshots(previous, latest) : []
+  const stagedAccounts = summarizeStagedAccounts(props.rows)
   return <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
     <Panel title="Upload holdings" action={<button className="primary" onClick={props.generateCandidates}><Sparkle size={16} /> Generate Auto-Recomp Candidates</button>}>
       <label className="upload">
@@ -547,7 +600,16 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
       {props.rows.length > 0 && <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="field"><span>Account owner</span><input className="control" value={props.accountOwner} onChange={(event) => props.setAccountOwner(event.target.value)} /></label>
         <label className="field"><span>Account type</span><input className="control" value={props.accountType} onChange={(event) => props.setAccountType(event.target.value)} /></label>
-        <button className="primary md:col-span-2" onClick={props.saveImportSnapshot}><UploadSimple size={16} /> Save as dated snapshot</button>
+        <div className="staged-account-list md:col-span-2">
+          {stagedAccounts.map((account) => <div key={account.id} className="staged-account">
+            <div><strong>{account.name}</strong><span>{account.type} · {account.rows} rows · {dollarFmt.format(account.value)}</span></div>
+            <button className="ghost" onClick={() => props.setRows((rows) => rows.filter((row) => row.__accountId !== account.id))}>Remove account</button>
+          </div>)}
+        </div>
+        <div className="flex flex-wrap gap-2 md:col-span-2">
+          <button className="primary" onClick={props.saveImportSnapshot}><UploadSimple size={16} /> Save as dated snapshot</button>
+          <button className="ghost" onClick={() => props.setRows([])}>Clear staged files</button>
+        </div>
         <PreviewRows rows={props.rows} />
       </div>}
     </Panel>
@@ -557,7 +619,7 @@ function ImportSnapshots(props: { snapshots: PortfolioSnapshot[]; current: Portf
           <div><p className="font-medium text-zinc-100">{snapshot.name}</p><p className="text-xs text-zinc-500">{new Date(snapshot.date).toLocaleString()} · {snapshot.holdings.length} holdings · {snapshot.source}</p></div>
           <div className="flex gap-2">
             <button className="ghost" onClick={() => props.setSelectedSnapshotId(snapshot.id)}>View</button>
-            {props.snapshots.length > 1 && <button className="icon-button" onClick={() => props.setSnapshots((items) => items.filter((item) => item.id !== snapshot.id))}><Trash size={16} /></button>}
+            {props.snapshots.length > 1 && <button className="ghost" onClick={() => props.setSnapshots((items) => items.filter((item) => item.id !== snapshot.id))}><Trash size={16} /> Delete</button>}
           </div>
         </div>)}
       </div>
@@ -575,7 +637,7 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
   return <section className="grid gap-5">
     <div className="grid gap-5 xl:grid-cols-2">
       <ChartPanel title="Top holdings ranked"><BarList data={analytics.topHoldings.slice(0, 15).map((h) => ({ name: h.ticker, value: weight(h.marketValue, analytics.total) }))} /></ChartPanel>
-      <ChartPanel title="Holdings treemap"><Treemap width={500} height={300} data={analytics.topHoldings.map((h) => ({ name: h.ticker, size: h.marketValue }))} dataKey="size" aspectRatio={4 / 3} stroke="#18181b" fill="#34d399" /></ChartPanel>
+      <ChartPanel title="Holdings treemap"><Treemap width={500} height={300} data={analytics.topHoldings.map((h) => ({ name: h.ticker, size: h.marketValue }))} dataKey="size" aspectRatio={4 / 3} stroke="var(--app-bg)" fill="var(--accent)" /></ChartPanel>
     </div>
     <Panel title="Holdings table" action={<button className="ghost" onClick={() => exportCsv('current-holdings.csv', analytics.holdings)}><DownloadSimple size={16} /> Export</button>}>
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
@@ -670,19 +732,19 @@ function WarningPanel({ warnings }: { warnings: AppWarning[] }) {
   return <Panel title="Warnings"><div className="space-y-3">{warnings.map((warning) => <div key={warning.id} className={`warning warning-${warning.severity}`}><ShieldWarning size={18} /><div><p>{warning.title}</p><span>{warning.detail}</span></div></div>)}</div></Panel>
 }
 function Donut({ data }: { data: { name: string; value: number }[] }) {
-  return <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96} paddingAngle={2}>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={tooltipStyle} /><Legend /></PieChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96} paddingAngle={2}>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} stroke="var(--app-bg)" />)}</Pie><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /></PieChart></ResponsiveContainer>
 }
 function BarList({ data }: { data: { name: string; value: number }[] }) {
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 16, right: 20 }}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis type="number" stroke="#71717a" /><YAxis type="category" dataKey="name" width={150} stroke="#a1a1aa" tick={{ fontSize: 12 }} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={tooltipStyle} /><Bar dataKey="value" fill="#34d399" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 16, right: 20 }}><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis type="category" dataKey="name" width={150} stroke={chartAxis} tick={{ fontSize: 12 }} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Bar dataKey="value" fill="var(--accent)" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
 }
 function TargetBars({ analytics, template }: { analytics: ReturnType<typeof analyze>; template: StrategyTemplate }) {
   const data = assetClasses.map((asset) => ({ name: asset, current: weight(analytics.assetTotals[asset] ?? 0, analytics.total), target: template.targets[asset] }))
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis type="number" stroke="#71717a" /><YAxis dataKey="name" type="category" width={150} stroke="#a1a1aa" tick={{ fontSize: 12 }} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={tooltipStyle} /><Legend /><Bar dataKey="current" fill="#34d399" radius={[0, 6, 6, 0]} /><Bar dataKey="target" fill="#52525b" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><CartesianGrid strokeDasharray="3 3" stroke={chartGrid} /><XAxis type="number" stroke={chartAxis} /><YAxis dataKey="name" type="category" width={150} stroke={chartAxis} tick={{ fontSize: 12 }} /><Tooltip formatter={(v) => `${percentFmt.format(Number(v))}%`} contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /><Bar dataKey="current" fill="var(--accent)" radius={[0, 6, 6, 0]} /><Bar dataKey="target" fill="var(--compare)" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer>
 }
 function BeforeAfter({ before, after }: { before: { name: string; value: number }[]; after: { name: string; value: number }[] }) {
   const names = Array.from(new Set([...before.map((i) => i.name), ...after.map((i) => i.name)]))
   const data = names.map((name) => ({ name, current: before.find((i) => i.name === name)?.value ?? 0, simulated: after.find((i) => i.name === name)?.value ?? 0 }))
-  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><XAxis type="number" stroke="#71717a" /><YAxis dataKey="name" type="category" width={150} stroke="#a1a1aa" tick={{ fontSize: 12 }} /><Tooltip contentStyle={tooltipStyle} /><Legend /><Bar dataKey="current" fill="#71717a" /><Bar dataKey="simulated" fill="#34d399" /></BarChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical"><XAxis type="number" stroke={chartAxis} /><YAxis dataKey="name" type="category" width={150} stroke={chartAxis} tick={{ fontSize: 12 }} /><Tooltip contentStyle={chartTooltip} /><Legend wrapperStyle={{ color: 'var(--muted-text)', fontSize: 12 }} /><Bar dataKey="current" fill="var(--compare)" /><Bar dataKey="simulated" fill="var(--accent)" /></BarChart></ResponsiveContainer>
 }
 function PreviewRows({ rows }: { rows: Record<string, unknown>[] }) {
   const keys = Object.keys(rows[0] ?? {}).slice(0, 6)
@@ -703,8 +765,6 @@ function ActionTable({ actions }: { actions: RecompCandidate[] }) {
   if (!actions.length) return <div className="empty"><Warning size={28} /><p>No simulated actions yet. Generate auto-recomp candidates or add manual sandbox actions.</p></div>
   return <div className="overflow-auto rounded-xl border border-white/10"><table className="data-table"><thead><tr><th>Action</th><th>Ticker / bucket</th><th>Amount</th><th>Before</th><th>After</th><th>Reason</th><th>Impact</th></tr></thead><tbody>{actions.map((action) => <tr key={action.id}><td>{action.actionType}</td><td>{action.tickerOrBucket}</td><td>{dollarFmt.format(action.dollarAmount)}</td><td>{percentFmt.format(action.beforeWeight)}%</td><td>{percentFmt.format(action.afterWeight)}%</td><td>{action.reason}</td><td>{action.alignmentImpact}</td></tr>)}</tbody></table></div>
 }
-
-const tooltipStyle = { background: '#18181b', border: '1px solid rgba(255,255,255,.1)', color: '#f4f4f5', borderRadius: 12 }
 
 function analyze(holdings: Holding[], template: StrategyTemplate, stress: StressScenario, minDollar: number, minWeight: number) {
   const total = holdings.reduce((sum, h) => sum + h.marketValue, 0)
@@ -821,6 +881,30 @@ function weight(value: number, total: number) { return total ? (value / total) *
 function parseMoney(value: unknown) { const cleanValue = String(value ?? '').replace(/[$,%"]/g, '').replace(/,/g, '').trim(); const parsed = Number(cleanValue); return Number.isFinite(parsed) ? parsed : 0 }
 function clean(value: unknown) { return String(value ?? '').replaceAll('"', '').trim() }
 function assetFromRaw(raw: string): AssetClass { return raw.toLowerCase().includes('cash') ? 'Cash' : raw.toLowerCase().includes('bond') ? 'Bonds/fixed income' : 'Broad US equity' }
+function stressExplanation(scenario: StressScenario) {
+  return `Stress estimate applies this scenario's simple percentage shocks to each holding by asset class or AI bucket, then totals the rough portfolio impact. It is a sensitivity check, not a forecast or risk model. Current scenario: ${scenario.name}.`
+}
+function assetShortLabel(asset: AssetClass) {
+  return {
+    'Broad US equity': 'US',
+    'AI buildout sleeve': 'AI',
+    'International equity': 'Intl',
+    'Bonds/fixed income': 'Bonds',
+    Cash: 'Cash',
+    'Alternatives/other': 'Alt',
+  }[asset]
+}
+function summarizeStagedAccounts(rows: Record<string, unknown>[]) {
+  const summaries = new Map<string, { id: string; name: string; type: string; rows: number; value: number }>()
+  rows.forEach((row) => {
+    const id = String(row.__accountId ?? 'unknown-account')
+    const current = summaries.get(id) ?? { id, name: String(row.__accountName ?? 'Uploaded account'), type: String(row.__accountType ?? 'Unknown account'), rows: 0, value: 0 }
+    current.rows += 1
+    current.value += parseMoney(row['Mkt Val (Market Value)'] ?? row.market_value ?? row['Market Value'])
+    summaries.set(id, current)
+  })
+  return Array.from(summaries.values()).sort((a, b) => b.value - a.value)
+}
 function riskMultiplier(h: Holding) {
   if (h.assetClass === 'Cash') return 0
   if (h.assetClass === 'Bonds/fixed income') return 0.3
@@ -875,9 +959,9 @@ function loadState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey) || '{}')
     const snapshots = parsed.snapshots?.length ? parsed.snapshots.map((snapshot: PortfolioSnapshot) => ({ ...snapshot, holdings: snapshot.holdings.map((holding) => ({ ...holding, accountId: holding.accountId ?? slug(holding.accountName), accountCategory: holding.accountCategory ?? detectAccountType(holding.accountName) })) })) : sampleSnapshots()
-    return { snapshots, selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedAccountScope: parsed.selectedAccountScope ?? 'combined', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', themePreference: parsed.themePreference ?? 'system', hiddenHoldingIds: parsed.hiddenHoldingIds ?? [], recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], decisionLog: parsed.decisionLog ?? [] }
+    return { snapshots, selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedAccountScope: parsed.selectedAccountScope ?? 'combined', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', customTemplates: parsed.customTemplates ?? [], themePreference: parsed.themePreference ?? 'system', hiddenHoldingIds: parsed.hiddenHoldingIds ?? [], recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], decisionLog: parsed.decisionLog ?? [] }
   } catch {
-    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedAccountScope: 'combined', selectedTemplateId: 'diversified-ai-supply-chain', themePreference: 'system' as ThemePreference, hiddenHoldingIds: [], recompCandidates: [], manualActions: [], decisionLog: [] }
+    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedAccountScope: 'combined', selectedTemplateId: 'diversified-ai-supply-chain', customTemplates: [], themePreference: 'system' as ThemePreference, hiddenHoldingIds: [], recompCandidates: [], manualActions: [], decisionLog: [] }
   }
 }
 function persist(state: PersistedState) {
