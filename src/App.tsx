@@ -65,6 +65,8 @@ import type {
   LedgerMode,
   ManualSandboxAction,
   PersistedState,
+  PositionPlan,
+  PositionPlanStyle,
   PortfolioSnapshot,
   RecompCandidate,
   SecurityType,
@@ -301,6 +303,7 @@ function App() {
   const [selectedStressId, setSelectedStressId] = useState('ai-disappointment')
   const [recompCandidates, setRecompCandidates] = useState<RecompCandidate[]>(persisted.recompCandidates)
   const [manualActions, setManualActions] = useState<ManualSandboxAction[]>(persisted.manualActions)
+  const [positionPlans, setPositionPlans] = useState<Record<string, PositionPlan>>(persisted.positionPlans)
   const [hiddenHoldingIds, setHiddenHoldingIds] = useState<string[]>(persisted.hiddenHoldingIds)
   const [decisionLog, setDecisionLog] = useState<DecisionLogEntry[]>(persisted.decisionLog)
   const [search, setSearch] = useState('')
@@ -349,8 +352,8 @@ function App() {
   }, [themePreference])
 
   useEffect(() => {
-    persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedAccountScope, selectedTemplateId: template.id, customTemplates, themePreference, ledgerMode, holdingEditOverlay, hiddenHoldingIds, recompCandidates, manualActions, decisionLog })
-  }, [currentSnapshot.id, customTemplates, decisionLog, hiddenHoldingIds, holdingEditOverlay, ledgerMode, manualActions, recompCandidates, selectedAccountScope, snapshots, template.id, themePreference])
+    persist({ snapshots, selectedSnapshotId: currentSnapshot.id, selectedAccountScope, selectedTemplateId: template.id, customTemplates, themePreference, ledgerMode, holdingEditOverlay, hiddenHoldingIds, recompCandidates, manualActions, positionPlans, decisionLog })
+  }, [currentSnapshot.id, customTemplates, decisionLog, hiddenHoldingIds, holdingEditOverlay, ledgerMode, manualActions, positionPlans, recompCandidates, selectedAccountScope, snapshots, template.id, themePreference])
 
   const commitHoldingEdit = useCallback((updated: Holding) => {
     setLedgerMode('sandbox')
@@ -543,7 +546,7 @@ function App() {
         {activeTab === 'Import & Snapshots' && <ImportSnapshots snapshots={snapshots} current={currentSnapshot} rows={importRows} setRows={setImportRows} message={importMessage} snapshotDate={importSnapshotDate} setSnapshotDate={setImportSnapshotDate} accountOwner={importAccountOwner} accountType={importAccountType} setAccountOwner={setImportAccountOwner} setAccountType={setImportAccountType} parseUpload={parseUpload} saveImportSnapshot={saveImportSnapshot} setSnapshots={setSnapshots} setSelectedSnapshotId={setSelectedSnapshotId} generateCandidates={generateCandidates} />}
         {activeTab === 'Concentration & Holdings' && <Xray analytics={analytics} table={table} search={search} setSearch={setSearch} grouping={grouping} setGrouping={setGrouping} minDollar={minDollar} minWeight={minWeight} setMinDollar={setMinDollar} setMinWeight={setMinWeight} setSelectedHoldingId={setSelectedHoldingId} excludedHoldingIds={hiddenHoldingIds} excludedHoldings={hiddenHoldings} includeHolding={(id) => setHiddenHoldingIds((items) => items.filter((item) => item !== id))} includeAll={() => setHiddenHoldingIds([])} ledgerMode={ledgerMode} setLedgerMode={setLedgerMode} editedCount={editedCount} discardEdits={discardHoldingEdits} saveEditedSnapshot={saveEditedSnapshot} filterOptions={tableFilterOptions} filters={{ asset: assetFilter, sector: sectorFilter, aiBucket: aiBucketFilter, size: sizeFilter }} setFilters={{ asset: setAssetFilter, sector: setSectorFilter, aiBucket: setAiBucketFilter, size: setSizeFilter }} />}
         {activeTab === 'AI Buildout' && <AIBuildout analytics={analytics} current={currentSnapshot} selectedHolding={selectedHolding} setSelectedHoldingId={setSelectedHoldingId} updateHolding={updateHolding} />}
-        {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} holdings={scopedHoldings} candidates={recompCandidates} manualActions={manualActions} setManualActions={setManualActions} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
+        {activeTab === 'Recomp Sandbox' && <Sandbox analytics={analytics} simulatedAnalytics={simulatedAnalytics} simulatedHoldings={simulated} holdings={scopedHoldings} candidates={recompCandidates} setCandidates={setRecompCandidates} manualActions={manualActions} setManualActions={setManualActions} positionPlans={positionPlans} setPositionPlans={setPositionPlans} clearCandidates={() => setRecompCandidates([])} generateCandidates={generateCandidates} decisionLog={decisionLog} />}
 
         <footer className="mt-8 border-t border-white/10 pt-4 text-xs leading-5 text-zinc-500">
           This app is for portfolio analysis and planning only. It does not provide financial advice, tax advice, or execute trades. All outputs are simulations based on uploaded data and simplified assumptions.
@@ -816,7 +819,7 @@ function Xray({ analytics, table, search, setSearch, grouping, setGrouping, minD
 function AIBuildout({ analytics, current, selectedHolding, setSelectedHoldingId, updateHolding }: { analytics: ReturnType<typeof analyze>; current: PortfolioSnapshot; selectedHolding?: Holding; setSelectedHoldingId: (id: string | null) => void; updateHolding: (holding: Holding) => void }) {
   return <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
     <div className="grid gap-5">
-      <ChartPanel title="AI exposure by bucket"><BarList data={compactChartData(analytics.aiBucketData, 8)} /></ChartPanel>
+      <ChartPanel title="AI exposure by bucket" tall><BarList data={analytics.aiBucketData} /></ChartPanel>
       <ChartPanel title="Direct vs indirect AI exposure"><Donut data={analytics.directnessData} /></ChartPanel>
       <Panel title="Top AI exposure contributors">
         <div className="space-y-2">
@@ -847,30 +850,45 @@ function AIScoreGuide() {
   </Panel>
 }
 
-function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualActions, setManualActions, clearCandidates, generateCandidates, decisionLog }: { analytics: ReturnType<typeof analyze>; simulatedAnalytics: ReturnType<typeof analyze>; holdings: Holding[]; candidates: RecompCandidate[]; manualActions: ManualSandboxAction[]; setManualActions: React.Dispatch<React.SetStateAction<ManualSandboxAction[]>>; clearCandidates: () => void; generateCandidates: () => void; decisionLog: DecisionLogEntry[] }) {
+function Sandbox({ analytics, simulatedAnalytics, simulatedHoldings, holdings, candidates, setCandidates, manualActions, setManualActions, positionPlans, setPositionPlans, clearCandidates, generateCandidates, decisionLog }: { analytics: ReturnType<typeof analyze>; simulatedAnalytics: ReturnType<typeof analyze>; simulatedHoldings: Holding[]; holdings: Holding[]; candidates: RecompCandidate[]; setCandidates: React.Dispatch<React.SetStateAction<RecompCandidate[]>>; manualActions: ManualSandboxAction[]; setManualActions: React.Dispatch<React.SetStateAction<ManualSandboxAction[]>>; positionPlans: Record<string, PositionPlan>; setPositionPlans: React.Dispatch<React.SetStateAction<Record<string, PositionPlan>>>; clearCandidates: () => void; generateCandidates: () => void; decisionLog: DecisionLogEntry[] }) {
+  const [mode, setMode] = useState<'template' | 'manual' | 'plans'>('template')
   const [ticker, setTicker] = useState(holdings[0]?.ticker ?? '')
   const [amount, setAmount] = useState(5000)
   const allActions = [...candidates, ...manualActions]
   const netChange = simulatedAnalytics.total - analytics.total
   const currentScenario = scenarioImpactDollars(analytics)
   const simulatedScenario = scenarioImpactDollars(simulatedAnalytics)
+  function updateAction(next: RecompCandidate) {
+    setCandidates((items) => items.map((item) => item.id === next.id ? next : item))
+    setManualActions((items) => items.map((item) => item.id === next.id ? { ...item, ...next } : item))
+  }
   function addManual(actionType: ActionType) {
     const holding = holdings.find((item) => item.ticker === ticker)
-    setManualActions((items) => [...items, { id: crypto.randomUUID(), actionType, tickerOrBucket: ticker, dollarAmount: amount, estimatedShares: holding?.price ? amount / holding.price : undefined, priceUsed: holding?.price, beforeWeight: holding ? weight(holding.marketValue, analytics.total) : 0, afterWeight: holding ? weight(holding.marketValue + (actionType.includes('Buy') ? amount : -amount), analytics.total) : 0, reason: 'Manual sandbox action.', riskImpact: 'User-defined impact.', alignmentImpact: 'Included in simulated before/after view.', stressImpact: 'Scenario sensitivity recomputes in the simulated portfolio.', note: '', }])
+    const price = priceForHolding(holding)
+    setManualActions((items) => [...items, { id: crypto.randomUUID(), actionType, tickerOrBucket: ticker, dollarAmount: amount, estimatedShares: price ? amount / price : undefined, priceUsed: price, basis: 'manual', beforeWeight: holding ? weight(holding.marketValue, analytics.total) : 0, afterWeight: holding ? weight(holding.marketValue + (actionType.includes('Buy') ? amount : -amount), analytics.total) : 0, reason: 'Manual worksheet action.', riskImpact: 'User-defined impact.', alignmentImpact: 'Included in simulated before/after view.', stressImpact: 'Scenario sensitivity recomputes in the simulated portfolio.', note: '', }])
   }
   return <section className="grid gap-5">
-    <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
-      <Panel title="Manual sandbox">
-        <div className="grid gap-3 md:grid-cols-3">
-          <label className="field"><span>Ticker or bucket</span><input className="control" value={ticker} onChange={(event) => setTicker(event.target.value.toUpperCase())} /></label>
-          <label className="field"><span>Dollar amount</span><input className="control" type="number" value={amount} onChange={(event) => setAmount(Number(event.target.value))} /></label>
-          <div className="flex items-end gap-2"><button className="ghost" onClick={() => addManual('Buy dollar amount')}>Buy</button><button className="ghost" onClick={() => addManual('Sell dollar amount')}>Sell</button></div>
+    <Panel title="Recomp worksheet">
+      <div className="ledger-toolbar">
+        <div>
+          <div className="segmented" aria-label="Sandbox mode">
+            <button className={mode === 'template' ? 'selected' : ''} onClick={() => setMode('template')}>Template Gap</button>
+            <button className={mode === 'manual' ? 'selected' : ''} onClick={() => setMode('manual')}>Manual Worksheet</button>
+            <button className={mode === 'plans' ? 'selected' : ''} onClick={() => setMode('plans')}>Position Plans</button>
+          </div>
+          <p>{mode === 'plans' ? 'Holding notes and review triggers stay local. They flag review moments; they do not create orders.' : 'Simulated actions translate the selected template into editable dollars and share math. They are planning estimates, not brokerage orders.'}</p>
         </div>
-      </Panel>
-      <Panel title="Auto-Recomp" action={<div className="flex gap-2"><button className="primary" onClick={generateCandidates}><ArrowClockwise size={16} /> Generate</button><button className="ghost" onClick={clearCandidates}>Clear</button></div>}>
-        <p className="text-sm leading-6 text-zinc-400">Auto-Recomp uses cash first, trims oversized concentration, reduces overexposed sleeves, and creates bucket-level allocate-here candidates when it should not name a new security.</p>
-      </Panel>
-    </div>
+        {mode === 'template' && <div className="flex gap-2"><button className="primary" onClick={generateCandidates}><ArrowClockwise size={16} /> Generate</button><button className="ghost" onClick={clearCandidates}>Clear</button></div>}
+      </div>
+      {mode === 'manual' && <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+        <label className="field"><span>Ticker</span><input className="control" list="holding-tickers" value={ticker} onChange={(event) => setTicker(event.target.value.toUpperCase())} /><datalist id="holding-tickers">{holdings.map((holding) => <option key={holding.id} value={holding.ticker} />)}</datalist></label>
+        <label className="field"><span>Dollar amount</span><input className="control" type="number" value={amount} onChange={(event) => setAmount(Number(event.target.value))} /></label>
+        <div className="flex items-end gap-2"><button className="ghost" onClick={() => addManual('Buy dollar amount')}>Buy</button><button className="ghost" onClick={() => addManual('Sell dollar amount')}>Sell</button></div>
+      </div>}
+      {mode === 'template' && <p className="text-sm leading-6 text-muted">Auto-Recomp trims oversized concentration, reduces overexposed sleeves, and creates bucket-level allocate-here candidates when the app should not invent a new security.</p>}
+      {mode === 'plans' && <PositionPlans holdings={holdings} analytics={analytics} plans={positionPlans} setPlans={setPositionPlans} />}
+    </Panel>
+    {mode !== 'plans' && <>
     <Panel title="Simulation output">
       <p className="mb-4 text-sm leading-6 text-muted">Recomp simulations are reallocations, so this view does not call the result profit or loss. Scenario sensitivity is a secondary what-if: each holding gets the scenario shock for its AI bucket first, then asset class fallback, and the weighted impacts are summed.</p>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -883,13 +901,18 @@ function Sandbox({ analytics, simulatedAnalytics, holdings, candidates, manualAc
       </div>
     </Panel>
     <Panel title="Simulated trade candidate table" action={<button className="ghost" onClick={() => exportCsv('simulated-recomp-candidates.csv', allActions)}><DownloadSimple size={16} /> Export CSV</button>}>
-      <p className="mb-3 text-sm leading-6 text-muted">Estimated shares use uploaded CSV prices. These are planning estimates only, not executable orders or advice about order type, timing, or limit price.</p>
-      <ActionTable actions={allActions} holdings={holdings} />
+      <p className="mb-3 text-sm leading-6 text-muted">Estimated shares use CSV price when present, otherwise market value divided by shares. Editing shares updates dollars; editing dollars updates shares. These are not order tickets or advice about timing or limit price.</p>
+      <ActionTable actions={allActions} holdings={holdings} onChange={updateAction} />
+    </Panel>
+    <Panel title="Before / after holdings breakdown">
+      <HoldingDeltaTable before={holdings} after={simulatedHoldings} />
     </Panel>
     <div className="grid gap-5 xl:grid-cols-2">
+      <ChartPanel title="Current vs simulated top holdings"><BeforeAfter before={holdingBarData(analytics.topHoldings.slice(0, 10), analytics.total)} after={holdingBarData(simulatedAnalytics.topHoldings.slice(0, 10), simulatedAnalytics.total)} /></ChartPanel>
       <ChartPanel title="Current vs simulated allocation"><BeforeAfter before={analytics.assetClassData} after={simulatedAnalytics.assetClassData} /></ChartPanel>
-      <ChartPanel title="Current vs simulated AI exposure"><BeforeAfter before={analytics.aiBucketData.slice(0, 8)} after={simulatedAnalytics.aiBucketData.slice(0, 8)} /></ChartPanel>
+      <ChartPanel title="Current vs simulated AI exposure"><BeforeAfter before={compactChartData(analytics.aiBucketData, 8)} after={compactChartData(simulatedAnalytics.aiBucketData, 8)} /></ChartPanel>
     </div>
+    </>}
     <Panel title="Decision log" action={<button className="ghost" onClick={() => exportJson('decision-log.json', decisionLog)}><DownloadSimple size={16} /> Export JSON</button>}>
       <div className="space-y-2">{decisionLog.map((log) => <div key={log.id} className="row"><span>{new Date(log.date).toLocaleString()} · {log.templateName}</span><span className="font-mono text-zinc-400">{log.actions.length} actions</span></div>)}</div>
     </Panel>
@@ -1015,12 +1038,65 @@ function ClassificationEditor({ holding, updateHolding }: { holding: Holding; cu
     <button className="primary w-full justify-center" onClick={() => updateHolding(draft)}><PencilSimple size={16} /> Save classification</button>
   </div>
 }
-function ActionTable({ actions, holdings }: { actions: RecompCandidate[]; holdings: Holding[] }) {
+function ActionTable({ actions, holdings, onChange }: { actions: RecompCandidate[]; holdings: Holding[]; onChange: (action: RecompCandidate) => void }) {
   if (!actions.length) return <div className="empty"><Warning size={28} /><p>No simulated actions yet. Generate auto-recomp candidates or add manual sandbox actions.</p></div>
-  return <div className="overflow-auto rounded-xl border border-white/10"><table className="data-table"><thead><tr><th>Action</th><th>Ticker / bucket</th><th>Amount</th><th>Est. shares</th><th>Price used</th><th>Before</th><th>After</th><th>Reason</th><th>Impact</th></tr></thead><tbody>{actions.map((action) => {
+  return <div className="overflow-auto rounded-xl border border-white/10"><table className="data-table"><thead><tr><th>Action</th><th>Ticker / bucket</th><th>Basis</th><th>Amount</th><th>Est. shares</th><th>Price used</th><th>Before</th><th>After</th><th>Reason</th><th>Impact</th></tr></thead><tbody>{actions.map((action) => {
     const price = priceUsedForAction(action, holdings)
-    return <tr key={action.id}><td>{action.actionType}</td><td>{action.tickerOrBucket}</td><td>{dollarFmt.format(action.dollarAmount)}</td><td>{formatShares(action.estimatedShares ?? (price ? action.dollarAmount / price : undefined))}</td><td>{formatPriceUsed(action, holdings)}</td><td>{percentFmt.format(action.beforeWeight)}%</td><td>{percentFmt.format(action.afterWeight)}%</td><td>{action.reason}</td><td>{action.alignmentImpact}</td></tr>
+    const shares = action.estimatedShares ?? (price ? action.dollarAmount / price : undefined)
+    return <tr key={action.id}><td>{action.actionType}</td><td>{action.tickerOrBucket}</td><td>{action.basis ?? 'template drift'}</td><td><NumberCell value={action.dollarAmount} step={100} onChange={(value) => onChange({ ...action, dollarAmount: value, estimatedShares: price ? value / price : undefined, priceUsed: price })} /></td><td>{price ? <NumberCell value={shares ?? 0} step={0.01} onChange={(value) => onChange({ ...action, estimatedShares: value, dollarAmount: value * price, priceUsed: price })} /> : formatShares(shares)}</td><td>{formatPriceUsed(action, holdings)}</td><td>{percentFmt.format(action.beforeWeight)}%</td><td>{percentFmt.format(action.afterWeight)}%</td><td>{action.reason}</td><td>{action.alignmentImpact}</td></tr>
   })}</tbody></table></div>
+}
+
+function HoldingDeltaTable({ before, after }: { before: Holding[]; after: Holding[] }) {
+  const rows = holdingDeltaRows(before, after)
+  if (!rows.length) return <div className="empty"><ChartBar size={28} /><p>No holding-level changes yet. Generate candidates or add manual worksheet actions.</p></div>
+  return <div className="overflow-auto rounded-xl border border-white/10"><table className="data-table data-table-compact"><thead><tr><th>Ticker</th><th>Current value</th><th>Current %</th><th>Simulated value</th><th>Simulated %</th><th>Delta</th><th>Shares after</th></tr></thead><tbody>{rows.map((row) => <tr key={row.ticker}><td>{row.ticker}</td><td>{dollarFmt.format(row.beforeValue)}</td><td>{percentFmt.format(row.beforeWeight)}%</td><td>{dollarFmt.format(row.afterValue)}</td><td>{percentFmt.format(row.afterWeight)}%</td><td className={row.delta >= 0 ? 'positive-delta' : 'negative-delta'}>{row.delta >= 0 ? '+' : ''}{dollarFmt.format(row.delta)}</td><td>{formatShares(row.afterShares)}</td></tr>)}</tbody></table></div>
+}
+
+function PositionPlans({ holdings, analytics, plans, setPlans }: { holdings: Holding[]; analytics: ReturnType<typeof analyze>; plans: Record<string, PositionPlan>; setPlans: React.Dispatch<React.SetStateAction<Record<string, PositionPlan>>> }) {
+  const [selectedTicker, setSelectedTicker] = useState(holdings[0]?.ticker ?? '')
+  const holding = holdings.find((item) => item.ticker === selectedTicker) ?? holdings[0]
+  const plan = holding ? plans[holding.ticker] ?? defaultPositionPlan(holding, analytics.total) : undefined
+  function updatePlan(next: PositionPlan) {
+    setPlans((items) => ({ ...items, [next.ticker]: next }))
+  }
+  if (!holding || !plan) return <div className="empty"><PencilSimple size={28} /><p>No holdings available for position planning.</p></div>
+  const currentWeight = weight(holding.marketValue, analytics.total)
+  const flags = positionPlanFlags(plan, currentWeight)
+  return <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+    <div className="space-y-2">
+      {holdings.slice(0, 40).map((item) => {
+        const saved = Boolean(plans[item.ticker])
+        return <button key={item.id} className={`row w-full text-left ${item.ticker === holding.ticker ? 'row-selected' : ''}`} onClick={() => setSelectedTicker(item.ticker)}>
+          <span><strong>{item.ticker}</strong><span className="block text-xs text-muted">{percentFmt.format(weight(item.marketValue, analytics.total))}% - {item.securityName}</span></span>
+          {saved && <span className="edited-pill">Plan</span>}
+        </button>
+      })}
+    </div>
+    <div className="position-plan-card">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h3>{holding.ticker} position plan</h3><p>{holding.securityName}</p></div>
+        <span className="template-pill">Current {percentFmt.format(currentWeight)}%</span>
+      </div>
+      <div className="custom-target-grid">
+        <label className="field"><span>Management style</span><select className="control" value={plan.style} onChange={(event) => updatePlan({ ...plan, style: event.target.value as PositionPlanStyle })}>{positionPlanStyles.map((style) => <option key={style}>{style}</option>)}</select></label>
+        <label className="field"><span>Next review date</span><input className="control" type="date" value={plan.reviewDate} onChange={(event) => updatePlan({ ...plan, reviewDate: event.target.value })} /></label>
+        <label className="field"><span>Target min %</span><input className="control" type="number" step={0.1} value={plan.targetMin} onChange={(event) => updatePlan({ ...plan, targetMin: Number(event.target.value) })} /></label>
+        <label className="field"><span>Target weight %</span><input className="control" type="number" step={0.1} value={plan.targetWeight} onChange={(event) => updatePlan({ ...plan, targetWeight: Number(event.target.value) })} /></label>
+        <label className="field"><span>Target max %</span><input className="control" type="number" step={0.1} value={plan.targetMax} onChange={(event) => updatePlan({ ...plan, targetMax: Number(event.target.value) })} /></label>
+        <label className="field"><span>Profit-harvest review at gain %</span><input className="control" type="number" step={1} value={plan.profitHarvestTrigger ?? ''} onChange={(event) => updatePlan({ ...plan, profitHarvestTrigger: optionalNumber(event.target.value) })} /></label>
+        <label className="field"><span>Drawdown review at loss %</span><input className="control" type="number" step={1} value={plan.drawdownReviewTrigger ?? ''} onChange={(event) => updatePlan({ ...plan, drawdownReviewTrigger: optionalNumber(event.target.value) })} /></label>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="field"><span>Thesis note</span><textarea className="control min-h-28" value={plan.thesis} onChange={(event) => updatePlan({ ...plan, thesis: event.target.value })} /></label>
+        <label className="field"><span>Action note</span><textarea className="control min-h-28" value={plan.actionNote} onChange={(event) => updatePlan({ ...plan, actionNote: event.target.value })} /></label>
+      </div>
+      <div className="review-flags">
+        {flags.length ? flags.map((flag) => <span key={flag}>{flag}</span>) : <span>No review flags from this plan.</span>}
+      </div>
+      <p className="text-sm leading-6 text-muted">Position Plans are notes and review triggers. They intentionally avoid market, limit, stop, trailing stop, day, or GTC order fields.</p>
+    </div>
+  </div>
 }
 
 function analyze(holdings: Holding[], template: StrategyTemplate, stress: StressScenario, minDollar: number, minWeight: number) {
@@ -1077,22 +1153,22 @@ function buildRecompCandidates(analytics: ReturnType<typeof analyze>, template: 
     if (before > template.maxSingle) {
       const targetValue = analytics.total * (template.maxSingle / 100)
       const amount = holding.marketValue - targetValue
-      if (amount > minTrade) actions.push(candidate('Trim to target %', holding.ticker, amount, before, template.maxSingle, `Trim ${holding.ticker} toward the ${template.maxSingle}% max single-position guardrail.`, holding.price))
+      if (amount > minTrade) actions.push(candidate('Trim to target %', holding.ticker, amount, before, template.maxSingle, `Trim ${holding.ticker} toward the ${template.maxSingle}% max single-position guardrail.`, priceForHolding(holding), 'single-position cap'))
     }
   })
   analytics.aiBucketData.slice(0, 3).forEach((bucket) => {
-    if (bucket.value > template.maxBucket) actions.push(candidate('Allocate cash to bucket', `Reduce ${bucket.name}`, analytics.total * 0.015, bucket.value, template.maxBucket, `${bucket.name} dominates the AI sleeve; redirect incremental exposure elsewhere.`))
+    if (bucket.value > template.maxBucket) actions.push(candidate('Allocate cash to bucket', `Reduce ${bucket.name}`, analytics.total * 0.015, bucket.value, template.maxBucket, `${bucket.name} dominates the AI sleeve; redirect incremental exposure elsewhere.`, undefined, 'AI bucket overweight'))
   })
   assetClasses.forEach((asset) => {
     const current = weight(analytics.assetTotals[asset] ?? 0, analytics.total)
     const target = template.targets[asset]
-    if (target - current > 3) actions.push(candidate('Allocate cash to bucket', asset, Math.min(analytics.total * ((target - current) / 100), analytics.total * 0.04), current, target, `${asset} is underweight versus the selected template.`))
+    if (target - current > 3) actions.push(candidate('Allocate cash to bucket', asset, Math.min(analytics.total * ((target - current) / 100), analytics.total * 0.04), current, target, `${asset} is underweight versus the selected template.`, undefined, 'template underweight'))
   })
-  analytics.holdings.filter((h) => h.marketValue < 1500).slice(0, 4).forEach((holding) => actions.push(candidate('Sell dollar amount', holding.ticker, holding.marketValue, weight(holding.marketValue, analytics.total), 0, `Consolidate tiny nuisance position to reduce portfolio clutter.`, holding.price)))
+  analytics.holdings.filter((h) => h.marketValue < 1500).slice(0, 4).forEach((holding) => actions.push(candidate('Sell dollar amount', holding.ticker, holding.marketValue, weight(holding.marketValue, analytics.total), 0, `Consolidate tiny nuisance position to reduce portfolio clutter.`, priceForHolding(holding), 'nuisance position')))
   return actions.slice(0, 12)
 }
-function candidate(actionType: ActionType, tickerOrBucket: string, dollarAmount: number, beforeWeight: number, afterWeight: number, reason: string, price?: number): RecompCandidate {
-  return { id: crypto.randomUUID(), actionType, tickerOrBucket, dollarAmount, estimatedShares: price ? dollarAmount / price : undefined, priceUsed: price, beforeWeight, afterWeight, reason, riskImpact: 'Estimated risk-budget contribution recalculates in the simulated view.', alignmentImpact: 'Moves closer to selected template guardrails.', stressImpact: 'Scenario sensitivity updates after applying this simulated action.', warning: actionType.includes('Buy') && afterWeight > beforeWeight ? 'Check concentration before acting.' : undefined }
+function candidate(actionType: ActionType, tickerOrBucket: string, dollarAmount: number, beforeWeight: number, afterWeight: number, reason: string, price?: number, basis?: string): RecompCandidate {
+  return { id: crypto.randomUUID(), actionType, tickerOrBucket, dollarAmount, estimatedShares: price ? dollarAmount / price : undefined, priceUsed: price, basis, beforeWeight, afterWeight, reason, riskImpact: 'Estimated risk-budget contribution recalculates in the simulated view.', alignmentImpact: 'Moves closer to selected template guardrails.', stressImpact: 'Scenario sensitivity updates after applying this simulated action.', warning: actionType.includes('Buy') && afterWeight > beforeWeight ? 'Check concentration before acting.' : undefined }
 }
 function simulateCandidates(holdings: Holding[], actions: RecompCandidate[]) {
   const simulated = holdings.map(cloneHolding)
@@ -1102,7 +1178,11 @@ function simulateCandidates(holdings: Holding[], actions: RecompCandidate[]) {
     const direction = action.actionType.includes('Buy') ? 1 : -1
     const amount = direction < 0 ? Math.min(action.dollarAmount, item.marketValue) : action.dollarAmount
     item.marketValue = Math.max(0, item.marketValue + direction * amount)
-    if (item.price) item.shares = item.marketValue / item.price
+    const price = priceForHolding(item)
+    if (price) {
+      item.price = price
+      item.shares = item.marketValue / price
+    }
     if (item.assetClass !== 'Cash') adjustCash(simulated, direction < 0 ? amount : -amount)
   })
   return simulated.filter((h) => h.marketValue > 1)
@@ -1157,7 +1237,7 @@ function compactChartData(data: { name: string; value: number }[], limit: number
   if (data.length <= limit) return data
   const head = data.slice(0, limit - 1)
   const other = data.slice(limit - 1).reduce((sum, item) => sum + item.value, 0)
-  return [...head, { name: 'Other AI buckets', value: other }]
+  return [...head, { name: 'Remaining AI buckets', value: other }]
 }
 function holdingBarData(holdings: Holding[], total: number): BarDatum[] {
   return holdings.map((holding) => {
@@ -1199,14 +1279,66 @@ function formatShares(value?: number) {
   if (!Number.isFinite(value)) return '-'
   return shareFmt.format(value ?? 0)
 }
+function priceForHolding(holding?: Holding) {
+  return holding?.price ?? (holding?.shares ? holding.marketValue / holding.shares : undefined)
+}
 function priceUsedForAction(action: RecompCandidate, holdings: Holding[]) {
-  return action.priceUsed ?? holdings.find((holding) => holding.ticker === action.tickerOrBucket)?.price
+  return action.priceUsed ?? priceForHolding(holdings.find((holding) => holding.ticker === action.tickerOrBucket))
 }
 function formatPriceUsed(action: RecompCandidate, holdings: Holding[]) {
   const price = priceUsedForAction(action, holdings)
   if (price) return dollarFmt.format(price)
   if ([...assetClasses, ...aiBuckets].includes(action.tickerOrBucket as AssetClass | AIBucket)) return 'N/A'
   return 'Price missing'
+}
+function holdingDeltaRows(before: Holding[], after: Holding[]) {
+  const beforeTotal = before.reduce((sum, holding) => sum + holding.marketValue, 0)
+  const afterTotal = after.reduce((sum, holding) => sum + holding.marketValue, 0)
+  const beforeMap = new Map(before.map((holding) => [holding.ticker, holding]))
+  const afterMap = new Map(after.map((holding) => [holding.ticker, holding]))
+  const tickers = Array.from(new Set([...beforeMap.keys(), ...afterMap.keys()]))
+  return tickers.map((ticker) => {
+    const beforeHolding = beforeMap.get(ticker)
+    const afterHolding = afterMap.get(ticker)
+    const beforeValue = beforeHolding?.marketValue ?? 0
+    const afterValue = afterHolding?.marketValue ?? 0
+    return {
+      ticker,
+      beforeValue,
+      afterValue,
+      beforeWeight: weight(beforeValue, beforeTotal),
+      afterWeight: weight(afterValue, afterTotal),
+      delta: afterValue - beforeValue,
+      afterShares: afterHolding?.shares ?? 0,
+    }
+  }).filter((row) => Math.abs(row.delta) > 0.5).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 20)
+}
+const positionPlanStyles: PositionPlanStyle[] = ['Passive', 'Core', 'Tactical', 'Speculative', 'Income / ballast', 'Review only']
+function defaultPositionPlan(holding: Holding, total: number): PositionPlan {
+  const current = weight(holding.marketValue, total)
+  return {
+    ticker: holding.ticker,
+    style: holding.assetClass === 'Bonds/fixed income' || holding.assetClass === 'Cash' ? 'Income / ballast' : holding.ai.score >= 3 ? 'Tactical' : 'Core',
+    targetMin: Math.max(0, Number((current * 0.75).toFixed(1))),
+    targetWeight: Number(current.toFixed(1)),
+    targetMax: Number(Math.max(current * 1.25, current + 0.5).toFixed(1)),
+    reviewDate: '',
+    thesis: '',
+    actionNote: '',
+  }
+}
+function positionPlanFlags(plan: PositionPlan, currentWeight: number) {
+  const flags: string[] = []
+  if (currentWeight > plan.targetMax) flags.push(`Above target max by ${percentFmt.format(currentWeight - plan.targetMax)} pts`)
+  if (currentWeight < plan.targetMin) flags.push(`Below target min by ${percentFmt.format(plan.targetMin - currentWeight)} pts`)
+  if (plan.reviewDate && new Date(plan.reviewDate) <= new Date()) flags.push('Review date due')
+  if (plan.profitHarvestTrigger) flags.push(`Profit-harvest review note at +${plan.profitHarvestTrigger}% gain`)
+  if (plan.drawdownReviewTrigger) flags.push(`Drawdown review note at -${plan.drawdownReviewTrigger}% loss`)
+  return flags
+}
+function optionalNumber(value: string) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && value !== '' ? parsed : undefined
 }
 function aggregateHoldingsForView(holdings: Holding[]): Holding[] {
   const groups = new Map<string, Holding[]>()
@@ -1438,9 +1570,9 @@ function loadState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey) || '{}')
     const snapshots = parsed.snapshots?.length ? parsed.snapshots.map((snapshot: PortfolioSnapshot) => ({ ...snapshot, holdings: snapshot.holdings.map(migrateHolding).filter((holding): holding is Holding => Boolean(holding)) })) : sampleSnapshots()
-    return { snapshots, selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedAccountScope: parsed.selectedAccountScope ?? 'combined', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', customTemplates: parsed.customTemplates ?? [], themePreference: parsed.themePreference ?? 'system', ledgerMode: parsed.ledgerMode ?? 'uploaded', holdingEditOverlay: parsed.holdingEditOverlay ?? {}, hiddenHoldingIds: parsed.hiddenHoldingIds ?? [], recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], decisionLog: parsed.decisionLog ?? [] }
+    return { snapshots, selectedSnapshotId: parsed.selectedSnapshotId ?? 'sample-current', selectedAccountScope: parsed.selectedAccountScope ?? 'combined', selectedTemplateId: parsed.selectedTemplateId ?? 'diversified-ai-supply-chain', customTemplates: parsed.customTemplates ?? [], themePreference: parsed.themePreference ?? 'system', ledgerMode: parsed.ledgerMode ?? 'uploaded', holdingEditOverlay: parsed.holdingEditOverlay ?? {}, hiddenHoldingIds: parsed.hiddenHoldingIds ?? [], recompCandidates: parsed.recompCandidates ?? [], manualActions: parsed.manualActions ?? [], positionPlans: parsed.positionPlans ?? {}, decisionLog: parsed.decisionLog ?? [] }
   } catch {
-    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedAccountScope: 'combined', selectedTemplateId: 'diversified-ai-supply-chain', customTemplates: [], themePreference: 'system' as ThemePreference, ledgerMode: 'uploaded' as LedgerMode, holdingEditOverlay: {}, hiddenHoldingIds: [], recompCandidates: [], manualActions: [], decisionLog: [] }
+    return { snapshots: sampleSnapshots(), selectedSnapshotId: 'sample-current', selectedAccountScope: 'combined', selectedTemplateId: 'diversified-ai-supply-chain', customTemplates: [], themePreference: 'system' as ThemePreference, ledgerMode: 'uploaded' as LedgerMode, holdingEditOverlay: {}, hiddenHoldingIds: [], recompCandidates: [], manualActions: [], positionPlans: {}, decisionLog: [] }
   }
 }
 function migrateHolding(holding: Holding): Holding | null {

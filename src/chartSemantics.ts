@@ -2,6 +2,28 @@ import { aiBuckets, assetClasses, assetClassColors, semanticColors } from './dom
 import type { AIBucket, AssetClass, Holding } from './domain'
 
 const fallbackColors = ['#047857', '#2563eb', '#b45309', '#6b7280', '#0f766e', '#be123c', '#475569']
+const aiBucketColors: Partial<Record<AIBucket, string>> = {
+  'Big tech / hyperscalers': '#047857',
+  'AI platforms / AI software': '#0f766e',
+  'Public indirect AI lab exposure': '#0e7490',
+  Semiconductors: '#0369a1',
+  'GPUs / accelerators': '#1d4ed8',
+  'CPUs / general compute': '#2563eb',
+  'Memory / storage': '#7c3aed',
+  'Semiconductor equipment': '#0891b2',
+  'Fabs / foundries': '#0d9488',
+  'Photonics / optical / interconnect': '#0284c7',
+  Networking: '#155e75',
+  'Data centers / colocation': '#0f766e',
+  'Power generation': '#b45309',
+  'Grid / electrification': '#ca8a04',
+  'Cooling / thermal management': '#0d9488',
+  'Materials / specialty chemicals': '#be123c',
+  Cybersecurity: '#475569',
+  'Enterprise software': '#059669',
+  'Robotics / automation': '#64748b',
+  'Broad passive index exposure': semanticColors.index,
+}
 
 export const holdingColorLegend = [
   { label: 'AI exposure', color: semanticColors.ai },
@@ -27,7 +49,8 @@ export function holdingColor(holding: Holding) {
 export function chartColor(name: string, index: number) {
   const lower = name.toLowerCase()
   if (assetClasses.includes(name as AssetClass)) return assetClassColors[name as AssetClass]
-  if (aiBuckets.includes(name as AIBucket)) return name === 'Broad passive index exposure' ? semanticColors.index : semanticColors.ai
+  if (aiBuckets.includes(name as AIBucket)) return aiBucketColors[name as AIBucket] ?? semanticColors.ai
+  if (lower.includes('remaining ai buckets')) return semanticColors.other
   if (lower.includes('cash') || lower.includes('money market')) return semanticColors.cash
   if (lower.includes('broad us') || lower.includes('broad passive') || lower.includes('index') || lower.includes('s&p') || lower.includes('nasdaq')) return semanticColors.index
   if (lower.includes('bond') || lower.includes('fixed income')) return semanticColors.bonds

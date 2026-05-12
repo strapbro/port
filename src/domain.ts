@@ -6,6 +6,7 @@ export type WarningSeverity = 'high' | 'medium' | 'low'
 export type ActionType = 'Trim to target %' | 'Sell dollar amount' | 'Buy dollar amount' | 'Allocate cash to bucket'
 export type ThemePreference = 'system' | 'dark' | 'light'
 export type LedgerMode = 'uploaded' | 'sandbox'
+export type PositionPlanStyle = 'Passive' | 'Core' | 'Tactical' | 'Speculative' | 'Income / ballast' | 'Review only'
 
 export type AIBucket =
   | 'Big tech / hyperscalers'
@@ -86,6 +87,7 @@ export type RecompCandidate = {
   dollarAmount: number
   estimatedShares?: number
   priceUsed?: number
+  basis?: string
   beforeWeight: number
   afterWeight: number
   reason: string
@@ -95,6 +97,18 @@ export type RecompCandidate = {
   warning?: string
 }
 export type ManualSandboxAction = RecompCandidate & { note: string }
+export type PositionPlan = {
+  ticker: string
+  style: PositionPlanStyle
+  targetMin: number
+  targetWeight: number
+  targetMax: number
+  reviewDate: string
+  thesis: string
+  actionNote: string
+  profitHarvestTrigger?: number
+  drawdownReviewTrigger?: number
+}
 export type StressScenario = { id: string; name: string; shocks: Partial<Record<AssetClass | AIBucket, number>> }
 export type AppWarning = { id: string; severity: WarningSeverity; title: string; detail: string }
 export type DecisionLogEntry = {
@@ -120,6 +134,7 @@ export type PersistedState = {
   hiddenHoldingIds: string[]
   recompCandidates: RecompCandidate[]
   manualActions: ManualSandboxAction[]
+  positionPlans: Record<string, PositionPlan>
   decisionLog: DecisionLogEntry[]
 }
 
@@ -178,6 +193,24 @@ function template(id: string, name: string, purpose: string, targetValues: numbe
 export const strategyTemplates: StrategyTemplate[] = [
   template('balanced-ai-growth', 'Balanced AI 25', 'Balanced growth profile with a 25% AI buildout sleeve and normal ballast.', [40, 25, 10, 15, 5, 5], [20, 30], 7, 45, 35, 'Moderate growth', '-18% to -30%', 7, 5, ['Clear AI participation', 'Diversified core remains intact', 'Keeps bonds and cash in the mix'], ['Still exposed to tech drawdowns', 'May trail a concentrated AI rally'], 'A growth portfolio that wants AI exposure without becoming a pure tech bet.', 'Watch single-name concentration'),
   template('aggressive-ai-infrastructure', 'Aggressive AI 40', 'High-conviction profile with a 40% AI infrastructure sleeve and wider guardrails.', [30, 40, 5, 10, 5, 10], [35, 45], 10, 60, 40, 'High growth', '-25% to -42%', 9, 7, ['Highest AI participation', 'Broad compute, power, and data center exposure'], ['Higher volatility', 'Sensitive to AI capex disappointment'], 'An intentionally aggressive AI infrastructure bet.', 'Higher volatility'),
+  {
+    ...template('ai-bull-55', 'AI Bull 55', 'High-conviction AI buildout posture between aggressive and mega-bull concentration.', [20, 55, 5, 7, 5, 8], [50, 60], 12, 72, 30, 'Very high growth', '-30% to -48%', 10, 8, ['Strong AI upside without going fully mega-bull', 'Focused on compute bottlenecks plus power/grid', 'Keeps small ballast and alternative sleeve'], ['Still highly volatile', 'Can be punished if AI capex slows', 'Requires active concentration review'], 'A bullish AI portfolio that wants more than Aggressive AI 40, but still keeps a few portfolio guardrails.', 'Bullish concentration'),
+    aiInternalSplit: {
+      'GPUs / accelerators': 12,
+      Semiconductors: 12,
+      'Memory / storage': 12,
+      'Photonics / optical / interconnect': 10,
+      'Semiconductor equipment': 8,
+      'Fabs / foundries': 5,
+      'Power generation': 10,
+      'Grid / electrification': 10,
+      'Data centers / colocation': 7,
+      'Cooling / thermal management': 5,
+      Networking: 4,
+      'Big tech / hyperscalers': 3,
+      Cybersecurity: 2,
+    },
+  },
   template('ai-barbell', 'Barbell AI 35', 'Pairs a 35% AI sleeve with larger cash and bond ballast.', [25, 35, 5, 20, 10, 5], [30, 40], 8, 50, 35, 'Barbell growth', '-20% to -36%', 8, 6, ['Meaningful AI upside', 'More defensive ballast', 'Keeps dry powder available'], ['Cash and bonds can drag', 'Still carries AI theme volatility'], 'Bullish on AI, but uncomfortable with full high-beta exposure.', 'Barbell volatility'),
   {
     ...template('diversified-ai-supply-chain', 'Supply Chain AI 30', '30% AI sleeve spread across chips, power, data centers, cooling, networking, and software.', [35, 30, 10, 15, 5, 5], [25, 35], 7, 50, 30, 'Diversified growth', '-20% to -34%', 8, 7, ['Best match for broad AI infrastructure', 'Reduces mega-cap/chip dependence', 'Includes second-order beneficiaries'], ['More moving parts', 'May lag a chip-led rally'], 'A portfolio built around the whole AI supply chain.', 'Balance the AI sleeve'),

@@ -371,11 +371,20 @@ button:disabled {
   padding: .8rem;
 }
 
+.row-selected {
+  border-color: rgba(16,185,129,.5);
+  background: rgba(16,185,129,.1);
+}
+
 .data-table {
   width: 100%;
   min-width: 1360px;
   border-collapse: collapse;
   font-size: .82rem;
+}
+
+.data-table-compact {
+  min-width: 980px;
 }
 
 .data-table th {
@@ -441,7 +450,8 @@ button:disabled {
 
 .treemap-stage {
   width: 100%;
-  height: calc(100% - .95rem);
+  height: 100%;
+  padding-bottom: .35rem;
 }
 
 .chart-frame .recharts-wrapper,
@@ -1078,6 +1088,52 @@ button:disabled {
   margin: 0;
   color: var(--muted-text);
   font-size: .86rem;
+}
+
+.position-plan-card {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--soft-bg);
+  padding: 1rem;
+}
+
+.position-plan-card h3 {
+  margin: 0 0 .25rem;
+  color: var(--app-text);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.position-plan-card p {
+  margin: 0;
+  color: var(--muted-text);
+  font-size: .84rem;
+}
+
+.review-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+}
+
+.review-flags span {
+  border: 1px solid rgba(16,185,129,.24);
+  border-radius: 999px;
+  background: rgba(16,185,129,.1);
+  color: var(--app-text);
+  padding: .38rem .55rem;
+  font-size: .76rem;
+}
+
+.positive-delta {
+  color: #34d399 !important;
+}
+
+.negative-delta {
+  color: #f87171 !important;
 }
 
 .custom-target-grid {
