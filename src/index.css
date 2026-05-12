@@ -20,7 +20,7 @@
   --prism-c-rgb: 251 146 60;
   --prism-d-rgb: 244 114 182;
   --prism-e-rgb: 4 120 87;
-  --ambient-opacity: .9;
+  --ambient-opacity: 1;
   background: #09090b;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -47,7 +47,7 @@
   --prism-c-rgb: 251 146 60;
   --prism-d-rgb: 236 72 153;
   --prism-e-rgb: 132 204 22;
-  --ambient-opacity: .94;
+  --ambient-opacity: 1;
   background: #f7f7f4;
 }
 
@@ -90,10 +90,10 @@ body {
   pointer-events: none;
   overflow: hidden;
   background:
-    radial-gradient(1100px 620px at 86% -8%, rgb(var(--prism-a-rgb) / .12), transparent 64%),
-    radial-gradient(980px 520px at 4% 18%, rgb(var(--prism-d-rgb) / .09), transparent 60%),
-    radial-gradient(900px 520px at 58% 112%, rgb(var(--prism-b-rgb) / .12), transparent 68%),
-    linear-gradient(180deg, transparent 0%, rgb(var(--prism-b-rgb) / .045) 38%, transparent 74%),
+    radial-gradient(1200px 680px at 92% -10%, rgb(var(--prism-a-rgb) / .18), transparent 62%),
+    radial-gradient(980px 560px at -4% 16%, rgb(var(--prism-d-rgb) / .14), transparent 60%),
+    radial-gradient(980px 560px at 58% 118%, rgb(var(--prism-b-rgb) / .2), transparent 66%),
+    linear-gradient(180deg, transparent 0%, rgb(var(--prism-b-rgb) / .07) 36%, transparent 76%),
     var(--app-bg);
   opacity: var(--ambient-opacity);
 }
@@ -101,22 +101,22 @@ body {
 .ambient-backdrop::before {
   content: "";
   position: absolute;
-  inset: -24% -14%;
+  inset: -28% -16%;
   background:
-    radial-gradient(90% 22% at 50% 42%, rgb(var(--prism-a-rgb) / .18), transparent 58%),
-    radial-gradient(75% 18% at 32% 48%, rgb(var(--prism-d-rgb) / .11), transparent 56%),
-    radial-gradient(78% 20% at 72% 47%, rgb(var(--prism-c-rgb) / .12), transparent 58%),
-    conic-gradient(from 232deg at 48% 44%, transparent 0 18%, rgb(var(--prism-b-rgb) / .12) 28%, rgb(var(--prism-a-rgb) / .1) 38%, rgb(var(--prism-d-rgb) / .08) 48%, transparent 62% 100%);
-  filter: blur(42px) saturate(1.18);
+    radial-gradient(100% 24% at 50% 46%, rgb(var(--prism-a-rgb) / .3), transparent 56%),
+    radial-gradient(78% 20% at 30% 52%, rgb(var(--prism-d-rgb) / .18), transparent 54%),
+    radial-gradient(82% 22% at 74% 50%, rgb(var(--prism-c-rgb) / .2), transparent 56%),
+    conic-gradient(from 232deg at 48% 45%, transparent 0 14%, rgb(var(--prism-b-rgb) / .2) 25%, rgb(var(--prism-a-rgb) / .16) 37%, rgb(var(--prism-d-rgb) / .14) 49%, transparent 64% 100%);
+  filter: blur(38px) saturate(1.28);
   mix-blend-mode: screen;
   transform: translate3d(0,0,0);
   opacity: 1;
 }
 
 :root[data-theme="light"] .ambient-backdrop::before {
-  filter: blur(48px) saturate(1.12);
+  filter: blur(42px) saturate(1.2);
   mix-blend-mode: multiply;
-  opacity: .58;
+  opacity: .72;
 }
 
 .ambient-backdrop::after {
@@ -124,26 +124,30 @@ body {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(115deg, transparent 0 18%, rgb(var(--prism-e-rgb) / .07) 29%, transparent 42% 100%),
-    linear-gradient(82deg, transparent 0 52%, rgb(var(--prism-c-rgb) / .055) 62%, transparent 75% 100%),
-    repeating-linear-gradient(100deg, rgba(255,255,255,.026) 0 1px, transparent 1px 74px);
+    linear-gradient(114deg, transparent 0 14%, rgb(var(--prism-e-rgb) / .12) 27%, transparent 43% 100%),
+    linear-gradient(82deg, transparent 0 48%, rgb(var(--prism-c-rgb) / .1) 61%, transparent 76% 100%),
+    repeating-linear-gradient(100deg, rgba(255,255,255,.04) 0 1px, transparent 1px 66px);
   mask-image:
     radial-gradient(95% 58% at 50% 42%, rgba(0,0,0,.9), transparent 76%),
     linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.8) 16%, rgba(0,0,0,.55) 70%, transparent 100%);
-  opacity: .52;
+  opacity: .74;
 }
 
 :root[data-theme="light"] .ambient-backdrop::after {
   background:
-    linear-gradient(115deg, transparent 0 16%, rgb(var(--prism-e-rgb) / .1) 29%, transparent 44% 100%),
-    linear-gradient(82deg, transparent 0 52%, rgb(var(--prism-c-rgb) / .08) 62%, transparent 75% 100%),
-    repeating-linear-gradient(100deg, rgba(24,24,27,.024) 0 1px, transparent 1px 78px);
-  opacity: .42;
+    linear-gradient(115deg, transparent 0 15%, rgb(var(--prism-e-rgb) / .13) 29%, transparent 44% 100%),
+    linear-gradient(82deg, transparent 0 50%, rgb(var(--prism-c-rgb) / .11) 62%, transparent 75% 100%),
+    repeating-linear-gradient(100deg, rgba(24,24,27,.03) 0 1px, transparent 1px 72px);
+  opacity: .56;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .ambient-backdrop::before {
-    animation: ambient-drift 26s cubic-bezier(.45, 0, .2, 1) infinite alternate;
+    animation: ambient-drift 24s cubic-bezier(.45, 0, .2, 1) infinite alternate;
+  }
+
+  .ambient-backdrop::after {
+    animation: prism-rays 18s cubic-bezier(.45, 0, .2, 1) infinite alternate;
   }
 }
 
@@ -154,6 +158,18 @@ body {
 
   to {
     transform: translate3d(1.8%, .9%, 0) scale(1.045) rotate(.25deg);
+  }
+}
+
+@keyframes prism-rays {
+  from {
+    transform: translate3d(-1.2%, 0, 0) scale(1.01);
+    opacity: .54;
+  }
+
+  to {
+    transform: translate3d(1.4%, .6%, 0) scale(1.03);
+    opacity: .82;
   }
 }
 
@@ -275,6 +291,86 @@ button:disabled {
 .metric-row-note strong {
   color: var(--app-text);
   font-weight: 600;
+}
+
+.template-gap-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.35fr) repeat(3, minmax(150px, 1fr));
+  gap: .75rem;
+}
+
+.template-gap-grid > div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft-bg);
+  padding: .85rem;
+}
+
+.mini-metric p {
+  margin: 0;
+  color: var(--muted-text);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .13em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.mini-metric strong {
+  display: block;
+  margin-top: .35rem;
+  color: var(--app-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.gap-primary {
+  grid-row: span 2;
+}
+
+.gap-primary span,
+.gap-primary p {
+  color: var(--muted-text);
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
+.gap-primary strong {
+  display: block;
+  margin: .4rem 0;
+  color: var(--app-text);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.worksheet-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, .32fr);
+  gap: 1rem;
+  align-items: stretch;
+  margin-bottom: 1rem;
+}
+
+.logic-card {
+  display: grid;
+  gap: .38rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft-bg);
+  padding: .85rem;
+}
+
+.logic-card strong {
+  color: var(--app-text);
+  font-size: .82rem;
+}
+
+.logic-card span {
+  color: var(--muted-text);
+  font-size: .76rem;
 }
 
 :root[data-theme="light"] .metric-card strong {
@@ -1115,6 +1211,21 @@ button:disabled {
   padding: 1rem;
 }
 
+.position-plan-layout {
+  display: grid;
+  grid-template-columns: minmax(460px, .9fr) minmax(380px, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.position-plan-table {
+  max-height: 560px;
+}
+
+.selected-table-row {
+  background: rgba(16,185,129,.1);
+}
+
 .position-plan-card h3 {
   margin: 0 0 .25rem;
   color: var(--app-text);
@@ -1126,6 +1237,22 @@ button:disabled {
   margin: 0;
   color: var(--muted-text);
   font-size: .84rem;
+}
+
+.plan-editor-section {
+  display: grid;
+  gap: .75rem;
+  border-top: 1px solid var(--border);
+  padding-top: .9rem;
+}
+
+.plan-editor-section h4 {
+  margin: 0;
+  color: var(--app-text);
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
 }
 
 .review-flags {
@@ -1149,6 +1276,10 @@ button:disabled {
 
 .negative-delta {
   color: #f87171 !important;
+}
+
+.placeholder-row td {
+  background: rgba(113,113,122,.06);
 }
 
 .custom-target-grid {
@@ -1251,7 +1382,10 @@ button:disabled {
   }
 
   .threshold-strip,
-  .table-filter-grid {
+  .table-filter-grid,
+  .template-gap-grid,
+  .worksheet-compose,
+  .position-plan-layout {
     grid-template-columns: 1fr;
   }
 }
