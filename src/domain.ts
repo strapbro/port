@@ -169,7 +169,7 @@ export const semanticColors = {
   bonds: '#6b7280',
   international: '#0f766e',
   alternatives: '#be123c',
-  equity: '#0891b2',
+  equity: '#475569',
   other: '#71717a',
 }
 export const assetClassColors: Record<AssetClass, string> = {

@@ -27,8 +27,8 @@ const aiBucketColors: Partial<Record<AIBucket, string>> = {
 
 export const holdingColorLegend = [
   { label: 'AI exposure', color: semanticColors.ai },
-  { label: 'Index / ETF', color: semanticColors.index },
-  { label: 'Individual equity', color: semanticColors.equity },
+  { label: 'Index / ETF / fund', color: semanticColors.index },
+  { label: 'Non-AI stock', color: semanticColors.equity },
   { label: 'Cash', color: semanticColors.cash },
   { label: 'Bonds', color: semanticColors.bonds },
   { label: 'Alternatives', color: semanticColors.alternatives },
@@ -39,10 +39,10 @@ export function holdingColor(holding: Holding) {
   if (holding.assetClass === 'Bonds/fixed income') return semanticColors.bonds
   if (isFundHolding(holding) || isBroadIndexHolding(holding)) return semanticColors.index
   if (holding.ai.score > 0) return semanticColors.ai
-  if (holding.assetClass === 'International equity') return semanticColors.international
-  if (holding.assetClass === 'Broad US equity') return semanticColors.equity
-  if (holding.securityType === 'Individual equity') return semanticColors.equity
   if (holding.assetClass === 'Alternatives/other') return semanticColors.alternatives
+  if (holding.securityType === 'Individual equity') return semanticColors.equity
+  if (holding.assetClass === 'International equity') return semanticColors.equity
+  if (holding.assetClass === 'Broad US equity') return semanticColors.equity
   return semanticColors.other
 }
 
