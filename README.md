@@ -4,10 +4,17 @@ Local-first browser app for portfolio x-ray, AI buildout exposure analysis, stra
 
 ## Run
 
-Double-click `start-portfolio-cockpit.bat`, or run:
+On a new PC, install Node.js first if needed, then double-click:
+
+```text
+setup-portfolio-cockpit.bat
+```
+
+The setup script checks for Node.js, installs dependencies, and verifies the app builds. This app needs Node.js 20.19 or newer, or Node.js 22.12 or newer.
+
+After setup, double-click `start-portfolio-cockpit.bat`, or run:
 
 ```powershell
-cmd /c npm.cmd install
 cmd /c npm.cmd run dev -- --host 127.0.0.1 --port 3002
 ```
 
