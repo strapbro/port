@@ -556,13 +556,20 @@ button:disabled {
 }
 
 .chart-frame-treemap {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: .75rem;
   padding-bottom: 0;
+}
+
+.chart-frame-treemap .chart-legend {
+  margin-bottom: 0;
 }
 
 .treemap-stage {
   width: 100%;
-  height: calc(100% - .7rem);
-  margin-bottom: .7rem;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   border-radius: 10px;
 }
