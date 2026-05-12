@@ -6,8 +6,8 @@
   --app-bg: #09090b;
   --app-text: #f4f4f5;
   --muted-text: #a1a1aa;
-  --panel-bg: rgba(24,24,27,.78);
-  --soft-bg: rgba(9,9,11,.34);
+  --panel-bg: rgba(24,24,27,.74);
+  --soft-bg: rgba(9,9,11,.3);
   --border: rgba(255,255,255,.09);
   --input-bg: rgba(9,9,11,.72);
   --accent: #047857;
@@ -15,11 +15,12 @@
   --chart-axis: #a1a1aa;
   --chart-grid: rgba(255,255,255,.09);
   --tooltip-bg: #18181b;
-  --ambient-a-rgb: 4 120 87;
-  --ambient-b-rgb: 37 99 235;
-  --ambient-c-rgb: 180 83 9;
-  --ambient-d-rgb: 14 165 233;
-  --ambient-opacity: .95;
+  --prism-a-rgb: 45 212 191;
+  --prism-b-rgb: 96 165 250;
+  --prism-c-rgb: 251 146 60;
+  --prism-d-rgb: 244 114 182;
+  --prism-e-rgb: 4 120 87;
+  --ambient-opacity: .9;
   background: #09090b;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -32,8 +33,8 @@
   --app-bg: #f7f7f4;
   --app-text: #18181b;
   --muted-text: #647067;
-  --panel-bg: rgba(255,255,255,.88);
-  --soft-bg: rgba(236,238,234,.74);
+  --panel-bg: rgba(255,255,255,.82);
+  --soft-bg: rgba(245,247,244,.68);
   --border: rgba(24,24,27,.12);
   --input-bg: rgba(255,255,255,.92);
   --accent: #047857;
@@ -41,11 +42,12 @@
   --chart-axis: #647067;
   --chart-grid: rgba(24,24,27,.1);
   --tooltip-bg: #ffffff;
-  --ambient-a-rgb: 16 185 129;
-  --ambient-b-rgb: 96 165 250;
-  --ambient-c-rgb: 251 146 60;
-  --ambient-d-rgb: 244 114 182;
-  --ambient-opacity: 1;
+  --prism-a-rgb: 20 184 166;
+  --prism-b-rgb: 59 130 246;
+  --prism-c-rgb: 251 146 60;
+  --prism-d-rgb: 236 72 153;
+  --prism-e-rgb: 132 204 22;
+  --ambient-opacity: .94;
   background: #f7f7f4;
 }
 
@@ -88,57 +90,70 @@ body {
   pointer-events: none;
   overflow: hidden;
   background:
-    linear-gradient(132deg, rgb(var(--ambient-b-rgb) / .18) 0%, transparent 32%, rgb(var(--ambient-a-rgb) / .12) 66%, transparent 100%),
-    linear-gradient(18deg, transparent 0%, rgb(var(--ambient-c-rgb) / .10) 42%, transparent 72%),
-    radial-gradient(1200px 620px at 50% -18%, rgb(var(--ambient-d-rgb) / .18), transparent 68%),
-    radial-gradient(1000px 520px at 78% 112%, rgb(var(--ambient-a-rgb) / .16), transparent 70%);
+    radial-gradient(1100px 620px at 86% -8%, rgb(var(--prism-a-rgb) / .12), transparent 64%),
+    radial-gradient(980px 520px at 4% 18%, rgb(var(--prism-d-rgb) / .09), transparent 60%),
+    radial-gradient(900px 520px at 58% 112%, rgb(var(--prism-b-rgb) / .12), transparent 68%),
+    linear-gradient(180deg, transparent 0%, rgb(var(--prism-b-rgb) / .045) 38%, transparent 74%),
+    var(--app-bg);
   opacity: var(--ambient-opacity);
 }
 
 .ambient-backdrop::before {
   content: "";
   position: absolute;
-  inset: -18%;
+  inset: -24% -14%;
   background:
-    conic-gradient(from 218deg at 62% 16%, transparent 0 18%, rgb(var(--ambient-d-rgb) / .12) 28%, rgb(var(--ambient-a-rgb) / .08) 38%, transparent 54% 100%),
-    linear-gradient(105deg, rgb(var(--ambient-b-rgb) / .12), transparent 38%, rgb(var(--ambient-c-rgb) / .08) 74%, transparent);
-  filter: blur(30px) saturate(1.08);
+    radial-gradient(90% 22% at 50% 42%, rgb(var(--prism-a-rgb) / .18), transparent 58%),
+    radial-gradient(75% 18% at 32% 48%, rgb(var(--prism-d-rgb) / .11), transparent 56%),
+    radial-gradient(78% 20% at 72% 47%, rgb(var(--prism-c-rgb) / .12), transparent 58%),
+    conic-gradient(from 232deg at 48% 44%, transparent 0 18%, rgb(var(--prism-b-rgb) / .12) 28%, rgb(var(--prism-a-rgb) / .1) 38%, rgb(var(--prism-d-rgb) / .08) 48%, transparent 62% 100%);
+  filter: blur(42px) saturate(1.18);
+  mix-blend-mode: screen;
   transform: translate3d(0,0,0);
   opacity: 1;
+}
+
+:root[data-theme="light"] .ambient-backdrop::before {
+  filter: blur(48px) saturate(1.12);
+  mix-blend-mode: multiply;
+  opacity: .58;
 }
 
 .ambient-backdrop::after {
   content: "";
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.014) 1px, transparent 1px);
-  background-size: 72px 72px;
-  mask-image: linear-gradient(to bottom, rgba(0,0,0,.45), transparent 76%);
-  opacity: .45;
+  background:
+    linear-gradient(115deg, transparent 0 18%, rgb(var(--prism-e-rgb) / .07) 29%, transparent 42% 100%),
+    linear-gradient(82deg, transparent 0 52%, rgb(var(--prism-c-rgb) / .055) 62%, transparent 75% 100%),
+    repeating-linear-gradient(100deg, rgba(255,255,255,.026) 0 1px, transparent 1px 74px);
+  mask-image:
+    radial-gradient(95% 58% at 50% 42%, rgba(0,0,0,.9), transparent 76%),
+    linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.8) 16%, rgba(0,0,0,.55) 70%, transparent 100%);
+  opacity: .52;
 }
 
 :root[data-theme="light"] .ambient-backdrop::after {
-  background-image:
-    linear-gradient(rgba(24,24,27,.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(24,24,27,.02) 1px, transparent 1px);
-  opacity: .38;
+  background:
+    linear-gradient(115deg, transparent 0 16%, rgb(var(--prism-e-rgb) / .1) 29%, transparent 44% 100%),
+    linear-gradient(82deg, transparent 0 52%, rgb(var(--prism-c-rgb) / .08) 62%, transparent 75% 100%),
+    repeating-linear-gradient(100deg, rgba(24,24,27,.024) 0 1px, transparent 1px 78px);
+  opacity: .42;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .ambient-backdrop::before {
-    animation: ambient-drift 22s cubic-bezier(.45, 0, .2, 1) infinite alternate;
+    animation: ambient-drift 26s cubic-bezier(.45, 0, .2, 1) infinite alternate;
   }
 }
 
 @keyframes ambient-drift {
   from {
-    transform: translate3d(-1.5%, -1%, 0) scale(1);
+    transform: translate3d(-1.8%, -1.1%, 0) scale(1) rotate(-.2deg);
   }
 
   to {
-    transform: translate3d(1.5%, .8%, 0) scale(1.035);
+    transform: translate3d(1.8%, .9%, 0) scale(1.045) rotate(.25deg);
   }
 }
 
